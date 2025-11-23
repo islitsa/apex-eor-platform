@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(python:*)",
+      "Bash(streamlit run:*)",
+      "Bash(npm run dev:*)",
+      "Bash(ping:*)",
+      "Bash(nul)",
+      "Bash(taskkill:*)",
+      "Bash(cat:*)",
+      "Bash(timeout /t 3 /nobreak)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(grep:*)",
+      "Bash(npm install:*)",
+      "Bash(call venvScriptsactivate)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(venvScriptsactivate)",
+      "Bash(tasklist:*)",
+      "Bash(dir:*)",
+      "Bash(find:*)",
+      "Bash(copy /Y:*)",
+      "Bash(cmd /c \"copy /Y discovery_instrumentation_fixed.py discovery_instrumentation.py\")",
+      "Bash(del /S /Q __pycache__ 2)",
+      "Bash(del /S /Q *.pyc 2)",
+      "Bash(del /S /Q c:Usersirinaapex-eor-platformsrcapi__pycache__ 2)",
+      "Bash(pytest:*)",
+      "Bash(start:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

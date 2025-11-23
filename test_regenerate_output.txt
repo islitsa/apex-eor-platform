@@ -1,0 +1,59 @@
+Traceback (most recent call last):
+  File "c:\Users\irina\apex-eor-platform\test_regenerate_workflow.py", line 180, in <module>
+    test_regenerate_workflow()
+  File "c:\Users\irina\apex-eor-platform\test_regenerate_workflow.py", line 83, in test_regenerate_workflow
+    print(f"\n\u2713 First generation used snippet path ({stats1['total_tokens_used']} tokens)")
+  File "C:\Users\irina\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2713' in position 2: character maps to <undefined>
+
+================================================================================
+TEST: Regenerate Workflow with Chat Feedback
+================================================================================
+
+1. Creating HybridStudioWrapper...
+
+================================================================================
+TWO-AGENT UI CODE GENERATION SYSTEM
+================================================================================
+Architecture: UX Designer (Visionary) + Gradio Developer (Implementer)
+================================================================================
+
+[OK] Using existing index: gradio-design-kb
+[OK] Using existing index: gradio-design-kb
+[UX Designer Agent] Initialized - Ready to design user experiences
+[OK] Using existing index: gradio-design-kb
+[Gradio Developer Agent] Initialized - Ready to implement in Gradio
+[Gradio Developer] Memory enabled for tracking implementations
+[Orchestrator] Two-agent system ready
+
+[Hybrid Generator] Initialized
+  - Snippet patterns available: 3
+  - Strategy: Snippet first (300 tokens), LLM fallback (8,000 tokens)
+[HybridStudioWrapper] Initialized - using snippet-first approach
+
+2. Extracting pipeline context...
+[PipelineContextExtractor] Auto-generating context from filesystem...
+[AutoContext]   Found source: fracfocus
+[AutoContext]   Found source: NETL EDX
+[AutoContext]   Found source: ONEPETRO
+[AutoContext]   Found source: rrc
+[AutoContext]   Found source: TWDB
+[AutoContext]   Found source: usgs
+[AutoContext] Discovered 6 data sources
+[AutoContext] Total: 224,044,778 records, 36.49 GB, 6 sources
+[PipelineContextExtractor] Discovered 6 sources, 224,044,778 records
+   [OK] Context extracted: 6 sources
+
+================================================================================
+PHASE 1: Initial Generation (Expect Snippet Path)
+================================================================================
+
+[Phase 1 Results]
+  Code length: 4,949 chars
+  Tokens used: 357
+  Snippet hits: 1
+  LLM fallbacks: 0
+
+[FAIL] TEST FAILED: 'charmap' codec can't encode character '\u2713' in position 2: character maps to <undefined>

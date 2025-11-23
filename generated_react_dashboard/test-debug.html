@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Test</title>
+</head>
+<body>
+    <h1>React Dashboard Debug Test</h1>
+    <div id="test-results"></div>
+
+    <script>
+        const resultsDiv = document.getElementById('test-results');
+
+        // Test 1: Check if React app is loading
+        fetch('http://localhost:3001')
+            .then(res => res.text())
+            .then(html => {
+                resultsDiv.innerHTML += '<p>✅ Vite server is responding</p>';
+
+                // Test 2: Check if main.tsx is being served
+                return fetch('http://localhost:3001/src/main.tsx');
+            })
+            .then(res => res.text())
+            .then(js => {
+                if (js.includes('ReactDOM.createRoot')) {
+                    resultsDiv.innerHTML += '<p>✅ main.tsx is being served correctly</p>';
+                } else {
+                    resultsDiv.innerHTML += '<p>❌ main.tsx content is incorrect</p>';
+                }
+
+                // Test 3: Check if App.tsx is accessible
+                return fetch('http://localhost:3001/src/App.tsx');
+            })
+            .then(res => res.text())
+            .then(js => {
+                if (js.includes('usePipelines')) {
+                    resultsDiv.innerHTML += '<p>✅ App.tsx is being served correctly</p>';
+                } else {
+                    resultsDiv.innerHTML += '<p>❌ App.tsx content is incorrect</p>';
+                }
+
+                // Test 4: Check API endpoint
+                return fetch('http://localhost:8000/api/pipelines');
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.pipelines) {
+                    resultsDiv.innerHTML += '<p>✅ API is returning pipeline data</p>';
+                    resultsDiv.innerHTML += `<p>Found ${data.pipelines.length} pipelines</p>`;
+                } else {
+                    resultsDiv.innerHTML += '<p>❌ API response is missing pipelines</p>';
+                }
+            })
+            .catch(err => {
+                resultsDiv.innerHTML += `<p>❌ Error: ${err.message}</p>`;
+            });
+
+        // Check for console errors
+        window.addEventListener('error', (e) => {
+            resultsDiv.innerHTML += `<p>❌ JavaScript Error: ${e.message}</p>`;
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# Data files (too large for git)
+data/raw/
+data/processed/
+*.csv
+*.xlsx
+*.db
+*.parquet
+
+# Environment
+.env
+venv/
+env/
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Secrets
+credentials.json
+api_keys.txt
+
+# Generated/Temporary folders
+generated_ui/
+temp_generated_ui/
+evolved_dashboard/
+
+# Node modules
+node_modules/
+
+# Training data (can be large)
+data/training/evolution_logs/
+
+# Archive folder
+archive/
+nul 

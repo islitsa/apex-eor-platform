@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Dashboard & Check Console</title>
+</head>
+<body>
+    <h1>Dashboard Debug Helper</h1>
+    <p>Click the button below to open the dashboard in a new tab, then check the browser console for errors.</p>
+
+    <button onclick="openDashboard()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px;">
+        Open Dashboard (localhost:3001)
+    </button>
+
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Click the button above to open the dashboard</li>
+        <li>Right-click on the blank page</li>
+        <li>Select "Inspect" or "Inspect Element"</li>
+        <li>Go to the "Console" tab</li>
+        <li>Look for any red error messages</li>
+        <li>Check if you see these debug messages:
+            <ul>
+                <li>"main.tsx is executing"</li>
+                <li>"Root element: [object HTMLDivElement]"</li>
+                <li>"Creating React root..."</li>
+                <li>"Rendering app..."</li>
+                <li>"App component is rendering"</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h2>Alternative: Check directly in iframe</h2>
+    <iframe src="http://localhost:3001" style="width: 100%; height: 600px; border: 2px solid #ccc; margin-top: 20px;"></iframe>
+
+    <script>
+        function openDashboard() {
+            window.open('http://localhost:3001', '_blank');
+        }
+    </script>
+</body>
+</html>

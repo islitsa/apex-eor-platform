@@ -1,0 +1,408 @@
+"""
+Agent Chat Runner - Streamlit interface that auto-runs agents and launches Gradio
+
+Flow:
+1. Launches in Tab 1 (Streamlit)
+2. Auto-loads context from shared state
+3. Shows agent conversation in real-time
+4. When complete, auto-launches Gradio dashboard in Tab 2
+"""
+
+import streamlit as st
+import sys
+from pathlib import Path
+from typing import Dict, Any
+import time
+import subprocess
+import webbrowser
+from datetime import datetime
+
+# Add project root to path
+project_root = Path(__file__).resolve().parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from src.agents.ui_orchestrator import UICodeOrchestrator
+from src.builders.dashboard_builder import DashboardBuilder
+from shared_state import PipelineState, SessionState
+
+
+class AgentChatRunner:
+    """Auto-running agent chat interface with Gradio launch"""
+
+    def __init__(self):
+        st.set_page_config(
+            page_title="Agent Dashboard Generator",
+            page_icon="🤖",
+            layout="wide"
+        )
+
+        # Initialize session state
+        if 'messages' not in st.session_state:
+            st.session_state.messages = []
+        if 'status' not in st.session_state:
+            st.session_state.status = 'initializing'  # initializing, generating, complete, error
+        if 'dashboard_code' not in st.session_state:
+            st.session_state.dashboard_code = None
+        if 'dashboard_file' not in st.session_state:
+            st.session_state.dashboard_file = None
+        if 'context' not in st.session_state:
+            st.session_state.context = None
+        if 'initialized' not in st.session_state:
+            st.session_state.initialized = False
+
+    def add_message(self, role: str, content: str, metadata: Dict = None):
+        """Add a message to the chat"""
+        st.session_state.messages.append({
+            'role': role,
+            'content': content,
+            'metadata': metadata or {},
+            'timestamp': datetime.now().isoformat()
+        })
+
+    def render_message(self, msg: Dict):
+        """Render a chat message"""
+        role = msg['role']
+        content = msg['content']
+
+        # Choose emoji and style based on role
+        role_styles = {
+            'system': ('🎭', 'System', '#8E24AA'),
+            'ux_designer': ('🎨', 'UX Designer', '#1E88E5'),
+            'gradio_developer': ('⚙️', 'Gradio Developer', '#43A047'),
+            'orchestrator': ('🎭', 'Orchestrator', '#8E24AA'),
+            'builder': ('🏗️', 'Dashboard Builder', '#F57C00'),
+        }
+
+        emoji, name, color = role_styles.get(role, ('ℹ️', role.title(), '#999'))
+
+        with st.chat_message(name, avatar=emoji):
+            st.markdown(f"**{name}**")
+
+            # Format content with proper markdown
+            if '**' in content or '\n' in content:
+                st.markdown(content)
+            else:
+                st.write(content)
+
+            # Show metadata in expander if present
+            if msg.get('metadata') and len(msg['metadata']) > 0:
+                with st.expander("📊 Details"):
+                    st.json(msg['metadata'])
+
+    def load_context_from_state(self) -> bool:
+        """
+        Load context from shared state manager.
+
+        Returns:
+            True if context loaded successfully, False otherwise
+        """
+        try:
+            context = PipelineState.load_context(check_freshness=True)
+
+            if context is None:
+                self.add_message('system', "❌ No pipeline context found")
+                self.add_message('system', "Please run: `python run_ingestion.py --generate-context`")
+                return False
+
+            st.session_state.context = context
+
+            # Show what was loaded
+            sources = len(context.get('data_sources', {}))
+            total_records = context.get('summary', {}).get('human_readable_records', 'Unknown')
+            size = context.get('summary', {}).get('human_readable_size', 'Unknown')
+
+            self.add_message('system', f"✓ Context loaded from shared state", {
+                'data_sources': sources,
+                'total_records': total_records,
+                'total_size': size,
+                'datasets': list(context.get('data_sources', {}).keys())
+            })
+
+            return True
+
+        except Exception as e:
+            self.add_message('system', f"❌ Error loading context: {e}")
+            return False
+
+    def run(self):
+        """Main render loop"""
+
+        # Header with ASCII art banner
+        st.markdown("""
+```
+======================================================================
+AGENT-POWERED DASHBOARD GENERATOR
+======================================================================
+
+Features:
+  [+] TWO-AGENT SYSTEM (UX Designer + Gradio Developer)
+  [+] Loads context from shared state (no hardcoding)
+  [+] Chain of Thought reasoning visible
+  [+] Implementation planning visible
+  [+] Real-time agent collaboration
+======================================================================
+```
+        """)
+
+        st.title("🤖 Watch Agents Build Your Dashboard")
+        st.markdown("**UX Designer (Visionary) + Gradio Developer (Implementer)**")
+
+        # Status bar
+        status_container = st.container()
+        with status_container:
+            if st.session_state.status == 'initializing':
+                st.info("⏳ Initializing agents...")
+            elif st.session_state.status == 'generating':
+                st.warning("🔄 Agents working...")
+            elif st.session_state.status == 'complete':
+                st.success("✅ Dashboard generation complete!")
+            elif st.session_state.status == 'error':
+                st.error("❌ Generation failed - check messages below")
+
+        st.markdown("---")
+
+        # Chat area
+        chat_container = st.container()
+        with chat_container:
+            for msg in st.session_state.messages:
+                self.render_message(msg)
+
+        # Auto-run on first load
+        if not st.session_state.initialized:
+            st.session_state.initialized = True
+
+            # Check for existing context first
+            if not st.session_state.context:
+                if self.load_context_from_state():
+                    st.session_state.status = 'generating'
+                    st.rerun()
+                else:
+                    st.session_state.status = 'error'
+                    st.rerun()
+
+        # Auto-generate if context loaded and status is generating
+        elif st.session_state.status == 'generating' and st.session_state.context:
+            self.generate_dashboard()
+
+        # Launch Gradio button (only shows when complete)
+        if st.session_state.status == 'complete' and st.session_state.dashboard_file:
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 1, 1])
+
+            with col2:
+                if st.button("🚀 Launch Gradio Dashboard", type="primary", use_container_width=True):
+                    self.launch_gradio()
+
+        # Manual controls for error recovery
+        if st.session_state.status == 'error':
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("🔄 Retry Generation", use_container_width=True):
+                    st.session_state.status = 'initializing'
+                    st.session_state.messages = []
+                    st.session_state.initialized = False
+                    st.rerun()
+
+            with col2:
+                if st.button("🔥 Load New Context", use_container_width=True):
+                    st.session_state.context = None
+                    st.session_state.status = 'initializing'
+                    st.session_state.initialized = False
+                    st.rerun()
+
+    def generate_dashboard(self):
+        """Generate dashboard with agent chat"""
+
+        # Step 1: Verify context
+        self.add_message('system', "**Step 1/4:** Verifying pipeline context...")
+        st.rerun()
+
+        if not st.session_state.context:
+            self.add_message('system', "❌ No context available")
+            st.session_state.status = 'error'
+            st.rerun()
+            return
+
+        context = st.session_state.context
+
+        # Step 2: Generate base dashboard
+        self.add_message('builder', "**Step 2/4:** Building base dashboard components...")
+        st.rerun()
+
+        try:
+            builder = DashboardBuilder()
+            base_code = builder.build(context)
+
+            self.add_message('builder', f"✓ Base dashboard generated: {len(base_code)} characters", {
+                'sources': len(context.get('data_sources', {})),
+                'components': 'gr.Blocks, gr.Tabs, gr.Button'
+            })
+            st.rerun()
+
+        except Exception as e:
+            self.add_message('builder', f"❌ Error building dashboard: {e}")
+            st.session_state.status = 'error'
+            st.rerun()
+            return
+
+        # Step 3: Generate navigation with two-agent system
+        self.add_message('orchestrator', "**Step 3/4:** Launching two-agent system for UX navigation...")
+        st.rerun()
+
+        try:
+            # Create orchestrator with message callback
+            orchestrator = StreamingOrchestrator(message_callback=self.add_message)
+
+            # Build requirements
+            requirements = {
+                'screen_type': 'dashboard_navigation',
+                'intent': 'Navigate through data pipeline hierarchy',
+                'data_sources': context.get('data_sources', {})
+            }
+
+            # Generate navigation code
+            navigation_code = orchestrator.generate_ui_code(requirements, context)
+
+            # Inject navigation into base code
+            final_code = self.inject_navigation(base_code, navigation_code)
+
+            self.add_message('orchestrator', f"✓ Navigation code generated and injected: {len(final_code)} total characters")
+            st.rerun()
+
+        except Exception as e:
+            self.add_message('orchestrator', f"❌ Error generating navigation: {e}")
+            final_code = base_code  # Fall back to base code
+            st.rerun()
+
+        # Step 4: Save dashboard
+        self.add_message('system', "**Step 4/4:** Saving dashboard file...")
+        st.rerun()
+
+        try:
+            output_file = project_root / "generated_pipeline_dashboard.py"
+            output_file.write_text(final_code, encoding='utf-8')
+
+            st.session_state.dashboard_code = final_code
+            st.session_state.dashboard_file = str(output_file)
+
+            self.add_message('system', f"✓ **Dashboard saved:** `{output_file.name}`", {
+                'file_path': str(output_file),
+                'file_size': len(final_code)
+            })
+
+            # Save session state for other tools
+            SessionState.update_session(
+                last_dashboard_file=str(output_file),
+                last_generation_time=datetime.now().isoformat()
+            )
+
+            # Mark as complete
+            st.session_state.status = 'complete'
+            st.rerun()
+
+        except Exception as e:
+            self.add_message('system', f"❌ Error saving dashboard: {e}")
+            st.session_state.status = 'error'
+            st.rerun()
+
+    def inject_navigation(self, base_code: str, navigation_code: str) -> str:
+        """Inject navigation code into base dashboard"""
+        placeholder = "# NAVIGATION_HANDLER_PLACEHOLDER"
+
+        if placeholder in base_code:
+            return base_code.replace(placeholder, navigation_code)
+        else:
+            # Append if no placeholder
+            return base_code + "\n\n" + navigation_code
+
+    def launch_gradio(self):
+        """Launch Gradio dashboard in new tab"""
+        if not st.session_state.dashboard_file:
+            st.error("No dashboard file to launch!")
+            return
+
+        self.add_message('system', "🚀 Launching Gradio dashboard in new tab...")
+        st.rerun()
+
+        try:
+            # Launch Gradio in background
+            dashboard_file = st.session_state.dashboard_file
+
+            # Start Gradio process
+            process = subprocess.Popen(
+                ['python', dashboard_file],
+                cwd=str(project_root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+
+            # Wait a moment for server to start
+            time.sleep(2)
+
+            # Open browser to Gradio
+            webbrowser.open('http://127.0.0.1:7860')
+
+            self.add_message('system', "✓ Gradio dashboard launched at http://127.0.0.1:7860")
+            st.rerun()
+
+        except Exception as e:
+            self.add_message('system', f"❌ Error launching Gradio: {e}")
+            st.rerun()
+
+
+class StreamingOrchestrator(UICodeOrchestrator):
+    """Orchestrator that streams messages to Streamlit"""
+
+    def __init__(self, message_callback=None):
+        super().__init__()
+        self.message_callback = message_callback
+
+    def emit(self, role: str, content: str, metadata: Dict = None):
+        """Emit message to Streamlit"""
+        if self.message_callback:
+            self.message_callback(role, content, metadata)
+            # Trigger rerun to show message immediately
+            time.sleep(0.1)  # Brief pause for UI update
+            st.rerun()
+
+    def generate_ui_code(self, requirements: Dict, context: Dict) -> str:
+        """Generate UI code with streaming messages"""
+
+        # PHASE 1: UX DESIGNER
+        self.emit('orchestrator', "**PHASE 1:** UX Design (The Visionary)")
+
+        self.emit('ux_designer', "Starting design process...")
+        self.emit('ux_designer', "Querying UX patterns from Pinecone RAG...")
+
+        design_spec = self.ux_designer.design(requirements)
+
+        self.emit('ux_designer', f"✓ Design complete!", {
+            'screen_type': design_spec.screen_type,
+            'components': len(design_spec.components),
+            'interactions': len(design_spec.interactions),
+            'patterns': design_spec.patterns
+        })
+
+        # PHASE 2: GRADIO DEVELOPER
+        self.emit('orchestrator', "**PHASE 2:** Gradio Implementation (The Implementer)")
+
+        self.emit('gradio_developer', "Starting implementation...")
+        self.emit('gradio_developer', "Querying Gradio constraints from Pinecone RAG...")
+
+        gradio_code = self.gradio_developer.build(design_spec, context)
+
+        self.emit('gradio_developer', f"✓ Implementation complete!", {
+            'code_length': len(gradio_code),
+            'validation': 'passed'
+        })
+
+        return gradio_code
+
+
+# Entry point
+if __name__ == "__main__":
+    runner = AgentChatRunner()
+    runner.run()

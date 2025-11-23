@@ -1,0 +1,42 @@
+Design a pipeline monitoring dashboard that shows:
+
+**Pipeline Status Overview:**
+  - fracfocus: complete download, unknown parsing → 0 files, 0 records
+  - fracfocus / Chemical_data: complete download, complete parsing → 16 files, 7,255,562 records
+  - rrc / completions_data: complete download, complete parsing → 29 files, 541,053 records
+  - rrc / horizontal_drilling_permits: complete download, complete parsing → 1 files, 168,239 records
+  - rrc / production: complete download, complete parsing → 16 files, 216,079,924 records
+  - NETL EDX: NOT PROCESSED YET (no data ingested)
+  - ONEPETRO: NOT PROCESSED YET (no data ingested)
+  - rrc: NOT PROCESSED YET (no data ingested)
+  - TWDB: NOT PROCESSED YET (no data ingested)
+  - usgs: NOT PROCESSED YET (no data ingested)
+
+**Data Requirements:**
+- Show processing stage status for each dataset (download → extract → parse → validate → load)
+- Display file counts, record counts, and data sizes
+- Highlight any errors or warnings in the pipeline
+- Show last update timestamps
+- Make it easy to see what's complete vs in-progress vs failed
+- Include data quality metrics where available
+- Professional, clean layout - this is for monitoring ETL pipeline health
+
+**UX/Interaction Requirements - CRITICAL:**
+Each dataset has a hierarchical directory structure (e.g., rrc/production/downloads, rrc/production/extracted, rrc/production/parsed).
+Users need to EXPLORE this structure interactively:
+
+1. **Expandable/Collapsible Datasets**: Make each dataset name clickable/expandable to reveal its subdirectories
+2. **Drill-Down Navigation**: When user clicks on a dataset (e.g., "rrc / production"), show its folders (downloads/, extracted/, parsed/)
+3. **File Browser**: When user expands "parsed/" folder, show the actual CSV files with names and sizes
+4. **File Preview**: When user clicks on a CSV file, show:
+   - File metadata (size, row count, columns)
+   - Column names and data types
+   - Sample of first few rows
+5. **Breadcrumb Navigation**: Show current location (e.g., rrc / production / parsed / 260663.csv) with back navigation
+6. **Search/Filter**: Allow users to search across all datasets and files
+7. **Tree View**: Use a collapsible tree structure (like file explorer) for intuitive navigation
+
+The full directory structure and file listings are available in context['data_sources'][dataset_name]['directory_structure'].
+Use this data to create an interactive, explorable UI - NOT just a static list!
+
+Total: 10 datasets, 224,044,778 records processed

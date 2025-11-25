@@ -1,74 +1,85 @@
-import React, { useMemo } from 'react';
-import StageStatusBadges from './StageStatusBadges.tsx';
-import type { Pipeline, StageStatus } from '../types';
+import React from 'react';
+import type { Pipeline } from '../types';
 
 interface Props {
   pipelines: Pipeline[];
 }
 
 export default function PipelineHealthOverview({ pipelines }: Props) {
-  const stageMetrics = useMemo(() => {
-    const stageMap = new Map<string, StageStatus>();
-
-    pipelines.forEach(pipeline => {
-      if (!pipeline.stages || !Array.isArray(pipeline.stages)) return;
-
-      pipeline.stages.forEach(stage => {
-        if (!stage || typeof stage !== 'object') return;
-        
-        const stageName = String(stage.name || 'unknown');
-        const stageStatus = String(stage.status || 'unknown');
-
-        if (!stageMap.has(stageName)) {
-          stageMap.set(stageName, {
-            name: stageName,
-            status: stageStatus,
-            count: 0
-          });
-        }
-
-        const existing = stageMap.get(stageName)!;
-        existing.count += 1;
-
-        // Update status to worst case (error > pending > complete)
-        if (stageStatus === 'error' || existing.status === 'error') {
-          existing.status = 'error';
-        } else if (stageStatus === 'pending' || existing.status === 'pending') {
-          existing.status = 'pending';
-        } else if (stageStatus === 'complete') {
-          existing.status = 'complete';
-        }
-      });
-    });
-
-    return Array.from(stageMap.values());
-  }, [pipelines]);
-
-  if (stageMetrics.length === 0) {
-    return (
-      <div className="bg-white rounded-xl shadow-md p-8 text-center">
-        <span className="material-symbols-rounded text-gray-400 text-4xl mb-2">info</span>
-        <p className="text-gray-600">No pipeline stages available</p>
-      </div>
-    );
-  }
+  const getStatusIcon = (status: string) => {
+    const statusStr = String(status || 'unknown').toLowerCase();
+    if (statusStr === 'complete' || statusStr === 'success') {
+      return { icon: 'check_circle', color: 'text-green-600', bg: 'bg-green-50' };
+    }
+    if (statusStr === 'running' || statusStr === 'in_progress') {
+      return { icon: 'pending', color: 'text-blue-600', bg: 'bg-blue-50' };
+    }
+    if (statusStr === 'error' || statusStr === 'failed') {
+      return { icon: 'error', color: 'text-red-600', bg: 'bg-red-50' };
+    }
+    return { icon: 'help', color: 'text-gray-600', bg: 'bg-gray-50' };
+  };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {stageMetrics.map(stage => (
-        <div
-          key={stage.name}
-          className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow"
-        >
-          <div className="flex items-start justify-between mb-4">
-            <h3 className="text-3xl font-bold text-gray-900 capitalize">
-              {String(stage.name || '').replace(/_/g, ' ')}
-            </h3>
-            <StageStatusBadges status={stage.status} />
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-gray-900 mb-4">Pipeline Health</h2>
+      
+      {pipelines.map(pipeline => (
+        <div key={pipeline.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-gray-900">{pipeline.display_name || pipeline.name}</h3>
+            {(() => {
+              const statusInfo = getStatusIcon(pipeline.status);
+              return (
+                <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${statusInfo.bg}`}>
+                  <span className={`material-symbols-rounded text-sm ${statusInfo.color}`}>
+                    {statusInfo.icon}
+                  </span>
+                  <span className={`text-xs font-medium ${statusInfo.color}`}>
+                    {String(pipeline.status || 'unknown').replace(/_/g, ' ')}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-5xl font-bold text-gray-900">{stage.count}</span>
-            <span className="text-lg text-gray-500">pipeline{stage.count !== 1 ? 's' : ''}</span>
+
+          <div className="space-y-2">
+            {pipeline.stages && Array.isArray(pipeline.stages) && pipeline.stages.map((stage, idx) => {
+              const stageName = stage.name || `Stage ${idx + 1}`;
+              const stageStatus = stage.status || 'unknown';
+              const statusInfo = getStatusIcon(stageStatus);
+              
+              return (
+                <div key={idx} className="flex items-center justify-between py-2 border-t border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <span className={`material-symbols-rounded text-sm ${statusInfo.color}`}>
+                      {statusInfo.icon}
+                    </span>
+                    <span className="text-sm text-gray-700">
+                      {String(stageName || '').replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {String(stageStatus || 'unknown').replace(/_/g, ' ')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-gray-500">Files:</span>
+              <span className="ml-1 font-medium text-gray-900">
+                {(pipeline.metrics?.file_count || 0).toLocaleString()}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500">Records:</span>
+              <span className="ml-1 font-medium text-gray-900">
+                {(pipeline.metrics?.record_count || 0).toLocaleString()}
+              </span>
+            </div>
           </div>
         </div>
       ))}

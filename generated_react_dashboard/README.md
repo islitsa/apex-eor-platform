@@ -1,13 +1,22 @@
-# RRC Production Data Dashboard
+# FracFocus Chemical Data Dashboard
 
-A production-ready React + TypeScript dashboard for viewing RRC (Railroad Commission) production data with pipeline health monitoring, file navigation, and data preview capabilities.
+A production-ready React + TypeScript dashboard for exploring chemical data from FracFocus with file navigation, data preview, and pipeline health monitoring.
 
 ## Features
 
-- **Pipeline Health Overview**: Real-time monitoring of data pipeline stages with status badges
-- **Expandable Dataset Cards**: Interactive cards showing dataset metrics with expandable file structure
-- **File Explorer Tree**: Hierarchical file navigation with folder expansion and file selection
-- **Data Preview Table**: Paginated table showing first 100 rows of selected files
-- **Responsive Design**: Material Design 3 styling with Tailwind CSS
+- **Dataset Overview**: View FracFocus chemical data with record counts, file metrics, and pipeline status
+- **Pipeline Health Monitoring**: Real-time stage indicators showing data pipeline health by stage
+- **File Explorer**: Navigate through nested file structures with expandable folders
+- **Data Preview**: View first 100 rows of chemical data with pagination controls
+- **Quick Stats**: Summary bar showing total files, records, and data size
 
-## Installation
+## Tech Stack
+
+- React 18 + TypeScript
+- Tailwind CSS for styling
+- Material Symbols Rounded icons
+- Vite for build tooling
+
+## Getting Started
+
+1. Install dependencies:

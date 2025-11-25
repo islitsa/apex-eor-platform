@@ -1,38 +1,32 @@
 {
   "pipelines": [
     {
-      "id": "rrc",
-      "name": "rrc",
-      "display_name": "rrc",
+      "id": "fracfocus",
+      "name": "fracfocus",
+      "display_name": "fracfocus",
       "status": "unknown",
       "metrics": {
-        "file_count": 345,
-        "record_count": 1,
-        "data_size": "63.7 GB"
+        "file_count": 37,
+        "record_count": 239061,
+        "data_size": "7.2 GB"
       },
       "stages": [
         {
-          "name": "completions_data",
+          "name": "downloads",
           "file_count": 1,
-          "total_size_bytes": 12248,
+          "total_size_bytes": 424572651,
           "status": "complete"
         },
         {
-          "name": "horizontal_drilling_permits",
-          "file_count": 1,
-          "total_size_bytes": 3532,
+          "name": "extracted",
+          "file_count": 17,
+          "total_size_bytes": 3369364579,
           "status": "complete"
         },
         {
-          "name": "metadata",
-          "file_count": 1,
-          "total_size_bytes": 4152,
-          "status": "complete"
-        },
-        {
-          "name": "production",
-          "file_count": 1,
-          "total_size_bytes": 9629,
+          "name": "parsed",
+          "file_count": 17,
+          "total_size_bytes": 3369364579,
           "status": "complete"
         }
       ],

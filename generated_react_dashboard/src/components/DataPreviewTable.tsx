@@ -1,52 +1,28 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { useDataSource } from '../dataHooks';
 import type { Pipeline } from '../types';
 
 interface Props {
   pipeline: Pipeline;
-  filePath: string;
+  selectedFile: string | null;
+  currentPage: number;
+  rowsPerPage: number;
 }
 
-export default function DataPreviewTable({ pipeline, filePath }: Props) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 10;
-
+export default function DataPreviewTable({ pipeline, selectedFile, currentPage, rowsPerPage }: Props) {
+  const offset = (currentPage - 1) * rowsPerPage;
+  
   const { data, total, loading, error } = useDataSource(pipeline.id, {
-    limit: 100,
+    limit: Math.min(rowsPerPage, 100),
+    offset: offset
   });
-
-  const paginatedData = useMemo(() => {
-    if (!data || !Array.isArray(data)) return [];
-    const startIndex = (currentPage - 1) * rowsPerPage;
-    const endIndex = startIndex + rowsPerPage;
-    return data.slice(startIndex, endIndex);
-  }, [data, currentPage]);
-
-  const totalPages = useMemo(() => {
-    if (!data || !Array.isArray(data)) return 0;
-    return Math.ceil(Math.min(data.length, 100) / rowsPerPage);
-  }, [data]);
-
-  const columns = useMemo(() => {
-    if (!paginatedData || paginatedData.length === 0) return [];
-    const firstRow = paginatedData[0];
-    return Object.keys(firstRow);
-  }, [paginatedData]);
-
-  const handlePrevPage = () => {
-    setCurrentPage(prev => Math.max(1, prev - 1));
-  };
-
-  const handleNextPage = () => {
-    setCurrentPage(prev => Math.min(totalPages, prev + 1));
-  };
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-md p-8">
-        <div className="flex items-center justify-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="text-gray-600">Loading data preview...</span>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Loading data...</p>
         </div>
       </div>
     );
@@ -54,10 +30,10 @@ export default function DataPreviewTable({ pipeline, filePath }: Props) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl shadow-md p-8">
-        <div className="flex items-center gap-3 text-red-600">
-          <span className="material-symbols-rounded">error</span>
-          <span>Error loading data: {error}</span>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <span className="material-symbols-rounded text-red-600 text-4xl mb-2">error</span>
+          <p className="text-sm text-red-600">{String(error)}</p>
         </div>
       </div>
     );
@@ -65,104 +41,80 @@ export default function DataPreviewTable({ pipeline, filePath }: Props) {
 
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-md p-8 text-center">
-        <span className="material-symbols-rounded text-gray-400 text-5xl mb-3">table_view</span>
-        <p className="text-gray-600 text-lg">No data available for preview</p>
-        <p className="text-gray-500 text-sm mt-2">{filePath}</p>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <span className="material-symbols-rounded text-gray-300 text-5xl mb-2">table_chart</span>
+          <p className="text-gray-500">No data available</p>
+          {selectedFile && (
+            <p className="text-sm text-gray-400 mt-1">Selected: {selectedFile}</p>
+          )}
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">
-              {pipeline.display_name || pipeline.name}
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">{filePath}</p>
-          </div>
-          <div className="text-sm text-gray-600">
-            Showing first 100 rows of {total?.toLocaleString() || 0} total records
-          </div>
-        </div>
-      </div>
+  const columns = Object.keys(data[0] || {});
 
-      {/* Table */}
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-rounded text-blue-600">science</span>
+            <h3 className="font-semibold text-gray-900">Chemical Data Preview</h3>
+          </div>
+          <span className="text-sm text-gray-600">
+            {Number(total || 0).toLocaleString()} total records
+          </span>
+        </div>
+        {selectedFile && (
+          <p className="text-xs text-gray-500 mt-1 truncate">
+            File: {selectedFile}
+          </p>
+        )}
+      </div>
+      
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-100 sticky top-0">
+          <thead className="bg-gray-50 sticky top-0">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-900 border-b border-gray-200">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-200">
                 #
               </th>
               {columns.map(col => (
                 <th
                   key={col}
-                  className="px-4 py-3 text-left text-sm font-bold text-gray-900 border-b border-gray-200"
+                  className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-200"
                 >
-                  {col}
+                  {String(col).replace(/_/g, ' ')}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {paginatedData.map((row, rowIndex) => (
+            {data.map((row, idx) => (
               <tr
-                key={rowIndex}
-                className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                key={idx}
+                className={`hover:bg-blue-50 cursor-pointer transition-colors ${
+                  idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                }`}
+                style={{ height: '40px' }}
               >
-                <td className="px-4 py-3 text-sm text-gray-600 border-b border-gray-100">
-                  {(currentPage - 1) * rowsPerPage + rowIndex + 1}
+                <td className="px-4 py-2 text-sm text-gray-500 border-b border-gray-100">
+                  {offset + idx + 1}
                 </td>
                 {columns.map(col => (
                   <td
                     key={col}
-                    className="px-4 py-3 text-sm text-gray-900 border-b border-gray-100"
+                    className="px-4 py-2 text-sm text-gray-900 border-b border-gray-100 max-w-xs truncate"
                   >
-                    {String(row[col] ?? '')}
+                    {row[col] !== null && row[col] !== undefined ? String(row[col]) : '-'}
                   </td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-
-      {/* Pagination */}
-      <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
-        <div className="text-sm text-gray-600">
-          Page {currentPage} of {totalPages} • Rows {(currentPage - 1) * rowsPerPage + 1}-
-          {Math.min(currentPage * rowsPerPage, data.length)} of {Math.min(data.length, 100)}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handlePrevPage}
-            disabled={currentPage === 1}
-            className={`px-4 py-2 rounded-lg flex items-center gap-1 transition-colors ${
-              currentPage === 1
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-          >
-            <span className="material-symbols-rounded text-lg">chevron_left</span>
-            Previous
-          </button>
-          <button
-            onClick={handleNextPage}
-            disabled={currentPage === totalPages}
-            className={`px-4 py-2 rounded-lg flex items-center gap-1 transition-colors ${
-              currentPage === totalPages
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-          >
-            Next
-            <span className="material-symbols-rounded text-lg">chevron_right</span>
-          </button>
-        </div>
       </div>
     </div>
   );

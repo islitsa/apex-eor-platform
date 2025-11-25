@@ -8,8 +8,16 @@ export interface Pipeline {
     record_count: number;
     data_size: string;
   };
-  stages: { name: string; status: string }[];
+  stages: Stage[];
   files: FileNode[];
+}
+
+export interface Stage {
+  name: string;
+  status: string;
+  file_count?: number;
+  record_count?: number;
+  last_updated?: string;
 }
 
 export interface FileNode {
@@ -20,7 +28,6 @@ export interface FileNode {
   files?: FileNode[];
   children?: FileNode[];
   size?: number;
-  size_bytes?: number;
   file_count?: number;
 }
 
@@ -33,8 +40,6 @@ export interface PipelinesResponse {
   };
 }
 
-export interface StageStatus {
-  name: string;
-  status: string;
-  count: number;
+export interface DataRecord {
+  [key: string]: any;
 }

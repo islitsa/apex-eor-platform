@@ -1,29 +1,35 @@
 import React, { useState, useMemo } from 'react';
 import { usePipelines } from './dataHooks.tsx';
-import PipelineHealthOverview from './components/PipelineHealthOverview.tsx';
-import ExpandableDatasetCard from './components/ExpandableDatasetCard.tsx';
+import DatasetOverviewCard from './components/DatasetOverviewCard.tsx';
+import PipelineStageIndicators from './components/PipelineStageIndicators.tsx';
+import FileExplorerPanel from './components/FileExplorerPanel.tsx';
 import DataPreviewTable from './components/DataPreviewTable.tsx';
+import PaginationControls from './components/PaginationControls.tsx';
+import QuickStatsBar from './components/QuickStatsBar.tsx';
 import type { Pipeline } from './types.ts';
 
 export default function App() {
   const { data, loading, error } = usePipelines();
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // CRITICAL: Filter to only discovered sources
-  const DISCOVERED_SOURCES = ["rrc"];
+  const DISCOVERED_SOURCES = ["fracfocus"];
 
   const filteredPipelines = useMemo(() => {
     if (!data?.pipelines || !Array.isArray(data.pipelines)) return [];
 
     return data.pipelines.filter(pipeline => {
       return DISCOVERED_SOURCES.some(source =>
-        pipeline.id.toLowerCase().includes(source.toLowerCase()) ||
-        pipeline.name.toLowerCase().includes(source.toLowerCase())
+        String(pipeline.id || '').toLowerCase().includes(source.toLowerCase()) ||
+        String(pipeline.name || '').toLowerCase().includes(source.toLowerCase())
       );
     });
   }, [data]);
 
+  // Calculate totals from filtered pipelines
   const totalFiles = useMemo(() => {
     return filteredPipelines.reduce((sum, p) => sum + (p.metrics?.file_count || 0), 0);
   }, [filteredPipelines]);
@@ -32,17 +38,27 @@ export default function App() {
     return filteredPipelines.reduce((sum, p) => sum + (p.metrics?.record_count || 0), 0);
   }, [filteredPipelines]);
 
-  const handleFileSelect = (pipeline: Pipeline, filePath: string) => {
-    setSelectedPipeline(pipeline);
-    setSelectedFile(filePath);
-  };
+  const totalSize = useMemo(() => {
+    return filteredPipelines.reduce((sum, p) => {
+      const sizeStr = p.metrics?.data_size || '0';
+      const sizeNum = parseFloat(String(sizeStr).replace(/[^0-9.]/g, ''));
+      return sum + (isNaN(sizeNum) ? 0 : sizeNum);
+    }, 0);
+  }, [filteredPipelines]);
+
+  // Auto-select first pipeline
+  React.useEffect(() => {
+    if (filteredPipelines.length > 0 && !selectedPipeline) {
+      setSelectedPipeline(filteredPipelines[0]);
+    }
+  }, [filteredPipelines, selectedPipeline]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600 text-lg">Loading production data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading chemical data...</p>
         </div>
       </div>
     );
@@ -50,81 +66,124 @@ export default function App() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="material-symbols-rounded text-red-600">error</span>
-            <h2 className="text-lg font-semibold text-red-900">Error Loading Data</h2>
-          </div>
-          <p className="text-red-700">{error}</p>
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <span className="material-symbols-rounded text-red-600 text-5xl mb-4">error</span>
+          <p className="text-red-600 font-semibold">Error loading data</p>
+          <p className="text-gray-600 mt-2">{String(error)}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (filteredPipelines.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <span className="material-symbols-rounded text-gray-400 text-5xl mb-4">database</span>
+          <p className="text-gray-600">No data sources found</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-[1200px] mx-auto px-8 py-6">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="material-symbols-rounded text-blue-600 text-4xl">database</span>
-            <h1 className="text-4xl font-bold text-gray-900">RRC Production Data Dashboard</h1>
+    <div className="flex h-screen bg-gray-50">
+      {/* Left Sidebar */}
+      <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-rounded text-blue-600">database</span>
+            <h1 className="text-xl font-bold text-gray-900">Data Sources</h1>
           </div>
-          <p className="text-gray-600 text-lg ml-14">
-            {filteredPipelines.length} data source{filteredPipelines.length !== 1 ? 's' : ''} • {totalFiles.toLocaleString()} files • {totalRecords.toLocaleString()} records
+          <p className="text-sm text-gray-600">
+            {filteredPipelines.length} {filteredPipelines.length === 1 ? 'source' : 'sources'} available
           </p>
         </div>
-      </header>
 
-      <main className="max-w-[1200px] mx-auto px-8 py-8">
-        {/* Top Tier: Pipeline Health Overview (25% height) */}
-        <section className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <span className="material-symbols-rounded">monitoring</span>
-            Pipeline Health by Stage
-          </h2>
-          <PipelineHealthOverview pipelines={filteredPipelines} />
-        </section>
+        <QuickStatsBar
+          totalFiles={totalFiles}
+          totalRecords={totalRecords}
+          totalSize={totalSize}
+        />
 
-        {/* Middle Tier: Expandable Dataset Cards (50% height) */}
-        <section className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <span className="material-symbols-rounded">oil_barrel</span>
-            Data Sources
-          </h2>
-          <div className="space-y-4">
-            {filteredPipelines.map(pipeline => (
-              <ExpandableDatasetCard
-                key={pipeline.id}
-                pipeline={pipeline}
-                onFileSelect={handleFileSelect}
-                selectedFile={selectedFile}
-              />
-            ))}
-          </div>
-          {filteredPipelines.length === 0 && (
-            <div className="bg-white rounded-xl shadow-md p-8 text-center">
-              <span className="material-symbols-rounded text-gray-400 text-5xl mb-3">folder_off</span>
-              <p className="text-gray-600 text-lg">No data sources found matching: {DISCOVERED_SOURCES.join(', ')}</p>
-            </div>
-          )}
-        </section>
-
-        {/* Bottom Tier: Data Preview Table (25% height) */}
-        {selectedPipeline && selectedFile && (
-          <section>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="material-symbols-rounded">table_view</span>
-              Data Preview
-            </h2>
-            <DataPreviewTable
-              pipeline={selectedPipeline}
-              filePath={selectedFile}
+        <div className="p-4 space-y-4">
+          {filteredPipelines.map(pipeline => (
+            <DatasetOverviewCard
+              key={pipeline.id}
+              pipeline={pipeline}
+              isSelected={selectedPipeline?.id === pipeline.id}
+              onClick={() => setSelectedPipeline(pipeline)}
             />
-          </section>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {selectedPipeline ? (
+          <>
+            {/* Header */}
+            <div className="bg-white border-b border-gray-200 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="material-symbols-rounded text-blue-600 text-3xl">science</span>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    {String(selectedPipeline.display_name || selectedPipeline.name || 'Unknown')}
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    {Number(selectedPipeline.metrics?.record_count || 0).toLocaleString()} records • {' '}
+                    {Number(selectedPipeline.metrics?.file_count || 0).toLocaleString()} files
+                  </p>
+                </div>
+              </div>
+
+              <PipelineStageIndicators stages={selectedPipeline.stages || []} />
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* File Explorer */}
+              <div className="w-96 bg-white border-r border-gray-200 overflow-y-auto">
+                <FileExplorerPanel
+                  pipeline={selectedPipeline}
+                  selectedFile={selectedFile}
+                  onFileSelect={setSelectedFile}
+                />
+              </div>
+
+              {/* Data Preview */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-auto p-6">
+                  <DataPreviewTable
+                    pipeline={selectedPipeline}
+                    selectedFile={selectedFile}
+                    currentPage={currentPage}
+                    rowsPerPage={rowsPerPage}
+                  />
+                </div>
+
+                <div className="bg-white border-t border-gray-200 p-4">
+                  <PaginationControls
+                    currentPage={currentPage}
+                    rowsPerPage={rowsPerPage}
+                    totalRecords={selectedPipeline.metrics?.record_count || 0}
+                    onPageChange={setCurrentPage}
+                    onRowsPerPageChange={setRowsPerPage}
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <span className="material-symbols-rounded text-gray-300 text-6xl mb-4">folder_open</span>
+              <p className="text-gray-500">Select a data source to view details</p>
+            </div>
+          </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

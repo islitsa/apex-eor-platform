@@ -1,13 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import type { Pipeline, FileNode } from '../types';
 
 interface Props {
   pipeline: Pipeline;
-  onFileSelect: (pipeline: Pipeline, filePath: string) => void;
-  selectedFile: string | null;
+  onFileSelect: (filePath: string) => void;
 }
 
-export default function FileExplorerTree({ pipeline, onFileSelect, selectedFile }: Props) {
+export default function FileExplorerTree({ pipeline, onFileSelect }: Props) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
 
   const normalizeNode = (node: any): FileNode => {
@@ -45,11 +44,6 @@ export default function FileExplorerTree({ pipeline, onFileSelect, selectedFile 
     };
   };
 
-  const normalizedFiles = useMemo(() => {
-    if (!pipeline.files || !Array.isArray(pipeline.files)) return [];
-    return pipeline.files.map(node => normalizeNode(node));
-  }, [pipeline.files]);
-
   const toggleExpand = (path: string) => {
     const newExpanded = new Set(expandedPaths);
     if (newExpanded.has(path)) {
@@ -60,98 +54,69 @@ export default function FileExplorerTree({ pipeline, onFileSelect, selectedFile 
     setExpandedPaths(newExpanded);
   };
 
-  const formatFileSize = (bytes?: number): string => {
-    if (!bytes) return '';
-    const kb = bytes / 1024;
-    const mb = kb / 1024;
-    const gb = mb / 1024;
-
-    if (gb >= 1) return `${Number(gb).toFixed(2)} GB`;
-    if (mb >= 1) return `${Number(mb).toFixed(2)} MB`;
-    if (kb >= 1) return `${Number(kb).toFixed(2)} KB`;
-    return `${bytes} B`;
-  };
-
-  const renderNode = (node: FileNode, depth: number): React.ReactNode => {
-    const isDirectory = node.type === 'directory' || node.type === 'folder';
+  const renderNode = (node: FileNode, depth: number = 0): React.ReactNode => {
     const isExpanded = expandedPaths.has(node.path);
-    const isSelected = selectedFile === node.path;
+    const isDirectory = node.type === 'directory' || node.type === 'folder';
     const hasChildren = node.children && node.children.length > 0;
 
     return (
       <div key={node.path}>
         <div
-          className={`flex items-center gap-2 px-4 py-3 hover:bg-gray-100 cursor-pointer transition-colors ${
-            isSelected ? 'bg-blue-50 border-l-4 border-blue-600' : ''
-          }`}
-          style={{ paddingLeft: `${depth * 24 + 16}px` }}
+          className="flex items-center gap-2 py-2 px-3 hover:bg-gray-100 rounded cursor-pointer transition-colors"
+          style={{ paddingLeft: `${depth * 24 + 12}px` }}
           onClick={() => {
             if (isDirectory && hasChildren) {
               toggleExpand(node.path);
             } else if (!isDirectory) {
-              onFileSelect(pipeline, node.path);
+              onFileSelect(node.path);
             }
           }}
         >
           {isDirectory && hasChildren && (
-            <span
-              className={`material-symbols-rounded text-gray-600 text-xl transition-transform ${
-                isExpanded ? 'rotate-90' : ''
-              }`}
-            >
-              navigate_next
-            </span>
-          )}
-          {isDirectory && !hasChildren && (
-            <span className="material-symbols-rounded text-gray-400 text-xl">
-              navigate_next
+            <span className="material-symbols-rounded text-gray-600 text-sm">
+              {isExpanded ? 'expand_more' : 'chevron_right'}
             </span>
           )}
           {!isDirectory && (
-            <span className="w-5"></span>
-          )}
-          
-          <span className={`material-symbols-rounded ${isDirectory ? 'text-blue-600' : 'text-gray-500'} text-xl`}>
-            {isDirectory ? 'folder' : 'description'}
-          </span>
-          
-          <span className={`flex-1 ${isSelected ? 'font-semibold text-blue-900' : 'text-gray-900'}`}>
-            {node.name}
-          </span>
-          
-          {node.file_count !== undefined && node.file_count > 0 && (
-            <span className="text-sm text-gray-500">
-              {node.file_count} file{node.file_count !== 1 ? 's' : ''}
+            <span className="material-symbols-rounded text-blue-600 text-sm ml-5">
+              description
             </span>
           )}
-          
-          {node.size !== undefined && node.size > 0 && (
-            <span className="text-sm text-gray-500 ml-4">
-              {formatFileSize(node.size)}
+          {isDirectory && (
+            <span className="material-symbols-rounded text-yellow-600 text-sm">
+              folder
             </span>
+          )}
+          <span className="text-sm text-gray-900 flex-1">{node.name}</span>
+          {node.file_count !== undefined && (
+            <span className="text-xs text-gray-500">{node.file_count} files</span>
           )}
         </div>
-        
-        {isDirectory && isExpanded && hasChildren && (
+
+        {isExpanded && hasChildren && (
           <div>
-            {node.children!.map(child => renderNode(child, depth + 1))}
+            {node.children?.map(child => renderNode(child, depth + 1))}
           </div>
         )}
       </div>
     );
   };
 
-  if (normalizedFiles.length === 0) {
+  if (!pipeline.files) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className="text-center py-8 text-gray-500">
         <span className="material-symbols-rounded text-4xl mb-2">folder_off</span>
         <p>No files available</p>
       </div>
     );
   }
 
+  const normalizedFiles = Array.isArray(pipeline.files)
+    ? pipeline.files.map(node => normalizeNode(node))
+    : [];
+
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="space-y-1">
       {normalizedFiles.map(node => renderNode(node, 0))}
     </div>
   );

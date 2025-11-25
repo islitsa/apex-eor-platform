@@ -49,3 +49,4 @@ data/training/evolution_logs/
 # Archive folder
 archive/
 nul 
+generated_react_dashboard/ 

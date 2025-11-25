@@ -1,0 +1,140 @@
+{
+  "dashboard_ratings": {
+    "test_dashboard_1": {
+      "overall_rating": 3,
+      "component_ratings": {
+        "layout": 3,
+        "colors": 2,
+        "pipeline_flow": 4,
+        "sor_cards": 4,
+        "kpi_metrics": 5,
+        "buttons": 2,
+        "controls": 3,
+        "logs": 4,
+        "responsiveness": 3,
+        "data_accuracy": 5
+      },
+      "comments": "Layout needs work, buttons don't function well. Colors are weird.",
+      "timestamp": "2025-10-25T18:37:34.189382",
+      "patterns_used": [
+        "gradio-complete-pipeline-dashboard-v2"
+      ]
+    }
+  },
+  "component_ratings": {
+    "layout": {
+      "ratings": [
+        {
+          "rating": 3,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 3.0
+    },
+    "colors": {
+      "ratings": [
+        {
+          "rating": 2,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 2.0
+    },
+    "pipeline_flow": {
+      "ratings": [
+        {
+          "rating": 4,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 4.0
+    },
+    "sor_cards": {
+      "ratings": [
+        {
+          "rating": 4,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 4.0
+    },
+    "kpi_metrics": {
+      "ratings": [
+        {
+          "rating": 5,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 5.0
+    },
+    "buttons": {
+      "ratings": [
+        {
+          "rating": 2,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 2.0
+    },
+    "controls": {
+      "ratings": [
+        {
+          "rating": 3,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 3.0
+    },
+    "logs": {
+      "ratings": [
+        {
+          "rating": 4,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 4.0
+    },
+    "responsiveness": {
+      "ratings": [
+        {
+          "rating": 3,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 3.0
+    },
+    "data_accuracy": {
+      "ratings": [
+        {
+          "rating": 5,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ],
+      "avg": 5.0
+    }
+  },
+  "pattern_performance": {
+    "gradio-complete-pipeline-dashboard-v2": {
+      "uses": 1,
+      "avg_rating": 3.0,
+      "ratings": [
+        {
+          "rating": 3,
+          "dashboard_id": "test_dashboard_1",
+          "timestamp": "2025-10-25T18:37:34.189382"
+        }
+      ]
+    }
+  },
+  "improvement_suggestions": []
+}

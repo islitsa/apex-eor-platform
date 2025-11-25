@@ -688,7 +688,7 @@ async def get_pipelines():
         }
     """
     try:
-        from shared_state import PipelineState
+        from src.shared_state import PipelineState
         from src.agents.context.adapter import ContextAdapter
         from src.agents.tools.pipeline_assembly_tool import PipelineAssemblyTool
 

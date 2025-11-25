@@ -31,7 +31,7 @@ from src.agents.ui_orchestrator import UICodeOrchestrator
 from src.agents.ux_designer import UXDesignerAgent, DesignSpec
 from src.agents.react_developer import ReactDeveloperAgent
 
-from shared_state import PipelineState, FavoritesManager
+from src.shared_state import PipelineState, FavoritesManager
 
 
 class AgentStudio:

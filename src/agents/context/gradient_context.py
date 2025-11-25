@@ -500,6 +500,187 @@ class GradientNavigator:
         return [nid for nid, _ in neighbors]
 
 
+class RepositoryStructureInterpreter:
+    """
+    Interprets repository paths using structure.yaml schema.
+    
+    Instead of hardcoding dataset paths, this reads a semantic schema
+    that defines what each level in the folder hierarchy means.
+    
+    Usage:
+        interpreter = RepositoryStructureInterpreter("data/structure.yaml")
+        context = interpreter.interpret_path("data/raw/FracFocus/Chemical_Data/Parsed")
+        # Returns: {
+        #   'completeness': 'raw',
+        #   'source': 'FracFocus', 
+        #   'dataset': 'Chemical_Data',
+        #   'etl_stage': 'Parsed',
+        #   'domain': 'chemistry',
+        #   'join_key': 'APINumber',
+        #   'ready_for_use': True
+        # }
+    """
+    
+    def __init__(self, structure_path: str = "data/structure.yaml"):
+        self.structure_path = Path(structure_path)
+        self.schema = self._load_schema()
+        
+    def _load_schema(self) -> Dict[str, Any]:
+        """Load structure.yaml schema."""
+        if not self.structure_path.exists():
+            print(f"[RepositoryStructure] Warning: {self.structure_path} not found, using defaults")
+            return self._default_schema()
+        
+        try:
+            import yaml
+            with open(self.structure_path, 'r') as f:
+                schema = yaml.safe_load(f)
+            print(f"[RepositoryStructure] Loaded schema from {self.structure_path}")
+            return schema
+        except ImportError:
+            print("[RepositoryStructure] PyYAML not installed, trying JSON fallback")
+            # Try JSON if YAML not available
+            json_path = self.structure_path.with_suffix('.json')
+            if json_path.exists():
+                with open(json_path, 'r') as f:
+                    return json.load(f)
+            return self._default_schema()
+        except Exception as e:
+            print(f"[RepositoryStructure] Error loading schema: {e}")
+            return self._default_schema()
+    
+    def _default_schema(self) -> Dict[str, Any]:
+        """Default schema if structure.yaml not found."""
+        return {
+            "levels": {
+                "0": {"name": "root", "value": "data"},
+                "1": {"name": "completeness", "possible_values": {"raw": "Original data"}},
+                "2": {"name": "source", "dynamic": True},
+                "3": {"name": "dataset", "dynamic": True},
+                "4": {"name": "etl_stage", "possible_values": {
+                    "Downloads": {"ready_for_use": False},
+                    "Extracted": {"ready_for_use": False},
+                    "Parsed": {"ready_for_use": True}
+                }}
+            },
+            "domain_hints": {}
+        }
+    
+    def interpret_path(self, path: str) -> Dict[str, Any]:
+        """
+        Interpret a path using the structure schema.
+        
+        Args:
+            path: File or folder path (e.g., "data/raw/FracFocus/Chemical_Data/Parsed")
+            
+        Returns:
+            Dict with semantic interpretation of each path component
+        """
+        parts = Path(path).parts
+        result = {
+            'path': path,
+            'levels': {},
+            'domain': None,
+            'join_key': None,
+            'ready_for_use': False,
+            'status': 'unknown'
+        }
+        
+        levels = self.schema.get('levels', {})
+        domain_hints = self.schema.get('domain_hints', {})
+        
+        for i, part in enumerate(parts):
+            level_def = levels.get(str(i), {})
+            level_name = level_def.get('name', f'level_{i}')
+            
+            result['levels'][level_name] = part
+            
+            # Check for known values
+            possible_values = level_def.get('possible_values', {})
+            if part in possible_values:
+                value_info = possible_values[part]
+                if isinstance(value_info, dict):
+                    if 'ready_for_use' in value_info:
+                        result['ready_for_use'] = value_info['ready_for_use']
+                    if 'intent' in value_info:
+                        result[f'{level_name}_intent'] = value_info['intent']
+                else:
+                    result[f'{level_name}_intent'] = value_info
+            
+            # Check domain hints
+            if part in domain_hints:
+                hint = domain_hints[part]
+                result['domain'] = hint.get('domain')
+                join_keys = hint.get('join_keys', [])
+                if join_keys:
+                    result['join_key'] = join_keys[0].get('field') if isinstance(join_keys[0], dict) else join_keys[0]
+                result['source_description'] = hint.get('description')
+        
+        # Determine status from ETL stage
+        etl_stage = result['levels'].get('etl_stage')
+        if etl_stage == 'Parsed':
+            result['status'] = 'complete'
+        elif etl_stage == 'Extracted':
+            result['status'] = 'extracted'
+        elif etl_stage == 'Downloads':
+            result['status'] = 'downloads_only'
+        
+        return result
+    
+    def discover_datasets(self, base_path: str = "data/raw") -> List[Dict[str, Any]]:
+        """
+        Dynamically discover all datasets by scanning directories.
+        
+        Uses structure schema to interpret what's found.
+        
+        Returns:
+            List of dataset contexts with semantic interpretation
+        """
+        base = Path(base_path)
+        datasets = []
+        
+        if not base.exists():
+            print(f"[RepositoryStructure] Base path not found: {base}")
+            return datasets
+        
+        # Level 2: sources
+        for source in base.iterdir():
+            if not source.is_dir() or source.name.startswith('.'):
+                continue
+            
+            # Level 3: datasets
+            for dataset in source.iterdir():
+                if not dataset.is_dir() or dataset.name.startswith('.'):
+                    continue
+                
+                # Find ETL stages present
+                stages = []
+                for stage in ['Downloads', 'Extracted', 'Parsed']:
+                    stage_path = dataset / stage
+                    if stage_path.exists():
+                        file_count = len(list(stage_path.glob('*')))
+                        if file_count > 0:
+                            stages.append({'name': stage, 'files': file_count})
+                
+                # Interpret the path
+                context = self.interpret_path(str(dataset))
+                context['stages'] = stages
+                context['id'] = f"{source.name.lower()}_{dataset.name.lower()}"
+                
+                datasets.append(context)
+        
+        print(f"[RepositoryStructure] Discovered {len(datasets)} datasets")
+        return datasets
+    
+    def get_domain_for_source(self, source_name: str) -> Optional[Dict[str, Any]]:
+        """Get domain hints for a source."""
+        return self.schema.get('domain_hints', {}).get(source_name)
+    
+    def get_join_relationships(self) -> List[Dict[str, Any]]:
+        """Get all defined join relationships."""
+        return self.schema.get('join_patterns', [])
+
+
 # Integration example with AgentStudio
 def integrate_gradient_with_agent_studio(agent_studio, gradient_system):
     """

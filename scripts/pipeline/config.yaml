@@ -1,0 +1,131 @@
+# Data Ingestion Pipeline Configuration
+#
+# This file contains configuration for all data sources in the APEX EOR platform
+
+data_sources:
+
+  # Texas Railroad Commission Data
+  rrc:
+    base_url: "https://www.rrc.texas.gov"
+
+    production:
+      name: "RRC Production Data (PDQ)"
+      url: "https://www.rrc.texas.gov/media/vkijhgem/pdq_dsv.zip"
+      format: "DSV (delimiter-separated values)"
+      delimiter: "}"
+      size_gb: 3.4
+      extracted_size_gb: 33
+      update_frequency: "Monthly"
+      download_path: "data/raw/rrc/production/downloads"
+      extracted_path: "data/raw/rrc/production/extracted"
+      parsed_path: "data/raw/rrc/production/parsed"
+      description: "90M+ production records from 1993 to current"
+
+    horizontal_permits:
+      name: "RRC Horizontal Drilling Permits (DAF318)"
+      url: "https://www.rrc.texas.gov/media/k0jdyqrb/daf318.txt"
+      format: "Fixed-width (360 chars/record)"
+      size_mb: 58
+      update_frequency: "Weekly"
+      download_path: "data/raw/rrc/horizontal_drilling_permits/downloads"
+      extracted_path: "data/raw/rrc/horizontal_drilling_permits/extracted"
+      parsed_path: "data/raw/rrc/horizontal_drilling_permits/parsed"
+      description: "168K+ horizontal drilling permits"
+
+    completions:
+      name: "RRC Completion Packets"
+      url: "https://www.rrc.texas.gov/resource-center/research/data-sets-available-for-download/completion-data-packets/"
+      format: "Nested ZIP archives (date/district/packet)"
+      size_gb: 1.1
+      extracted_size_mb: 110
+      parsed_size_mb: 70
+      update_frequency: "Daily"
+      download_path: "data/raw/rrc/completions_data/downloads"
+      extracted_path: "data/raw/rrc/completions_data/extracted"
+      parsed_path: "data/raw/rrc/completions_data/parsed"
+      description: "25K+ completion packets with well design data"
+      notes: "Requires manual download or web scraping"
+
+  # FracFocus Chemical Disclosure Registry
+  fracfocus:
+    name: "FracFocus Chemical Disclosure Data"
+    base_url: "https://fracfocus.org"
+
+    csv_bulk:
+      name: "FracFocus CSV Bulk Download"
+      url: "https://fracfocusdata.org/DigitalDownload/FracFocusCSV.zip"
+      format: "CSV (17 files)"
+      size_mb: 425
+      extracted_size_gb: 3.1
+      update_frequency: "Quarterly"
+      download_path: "data/raw/fracfocus/downloads"
+      extracted_path: "data/raw/fracfocus/extracted"
+      parsed_path: "data/raw/fracfocus/parsed"
+      description: "7.3M+ chemical disclosure records"
+      license: "Public Domain"
+
+      tables:
+        - name: "FracFocusRegistry"
+          files: 14
+          records: "7M+"
+          description: "Primary chemical disclosure records"
+
+        - name: "DisclosureList"
+          files: 1
+          records: "200K+"
+          description: "Well-level disclosure metadata"
+
+        - name: "WaterSource"
+          files: 1
+          records: "100K+"
+          description: "Water source information"
+
+# Pipeline Processing Steps
+processing:
+
+  download:
+    timeout_seconds: 600
+    retry_attempts: 3
+    checksum_validation: true
+
+  extract:
+    preserve_originals: true
+    verify_extraction: true
+
+  parse:
+    encoding: "utf-8"
+    error_handling: "warn"
+    output_format: "csv"
+    alternative_formats:
+      - "parquet"
+
+# Data Linkage
+linkage:
+  primary_key: "API_NO"
+  description: "8-digit unique well identifier"
+  format: "3-digit county + 5-digit unique number"
+
+  relationships:
+    - from: "horizontal_permits"
+      to: "completions"
+      key: "api_number"
+
+    - from: "completions"
+      to: "production"
+      key: "API_NUMBER"
+
+    - from: "production"
+      to: "fracfocus"
+      key: "API_NO"
+
+# Storage Optimization
+storage:
+  cleanup_after_parsing:
+    - "data/raw/rrc/completions_data/extracted"  # Saves 110MB
+
+  archive_options:
+    - "Keep either production extracted OR parsed (not both)"  # Saves 33GB
+
+  compression:
+    format: "parquet"
+    benefits: "Better compression ratio, faster queries"

@@ -1,0 +1,185 @@
+# APEX Data Repository Structure Schema
+# Defines the grammar of folder hierarchy - agents interpret paths using this
+# 
+# Usage: Agent reads this once, then navigates any path dynamically
+# Example: data/raw/RRC/Completions/Parsed/*.csv
+#   → Level 1 (raw): Unvalidated source data
+#   → Level 2 (RRC): Texas Railroad Commission
+#   → Level 3 (Completions): Well completion records  
+#   → Level 4 (Parsed): Ready-to-use CSVs
+
+name: "APEX Data Repository"
+version: "1.0"
+description: "Schema for interpreting folder hierarchy in petroleum data lake"
+
+# Each level in the folder tree has semantic meaning
+levels:
+  0:
+    name: "root"
+    value: "data"
+    intent: "All data assets for APEX platform"
+    
+  1:
+    name: "completeness"
+    intent: "Data maturity/validation stage"
+    possible_values:
+      raw: "Original unmodified data from external sources - no transformations applied"
+      validated: "Data that passed quality checks and business rules"
+      final: "Production-ready, deduplicated, joined datasets for analysis"
+    default: "raw"
+    
+  2:
+    name: "source"
+    intent: "Data provider organization or system"
+    dynamic: true  # Agent discovers by scanning - not hardcoded
+    examples:
+      - name: "FracFocus"
+        full_name: "FracFocus Chemical Disclosure Registry"
+        url: "https://fracfocus.org"
+      - name: "RRC"
+        full_name: "Texas Railroad Commission"
+        url: "https://www.rrc.texas.gov"
+      - name: "NETL"
+        full_name: "National Energy Technology Laboratory"
+        url: "https://netl.doe.gov"
+      - name: "USGS"
+        full_name: "US Geological Survey"
+        url: "https://www.usgs.gov"
+    
+  3:
+    name: "dataset"
+    intent: "Specific data product or category from source"
+    dynamic: true  # Agent discovers by scanning
+    examples:
+      - "Chemical_Data"      # FracFocus chemical disclosures
+      - "Completions"        # RRC well completions
+      - "Horizontal_Permits" # RRC drilling permits
+      - "Well_Production"    # RRC production data (PDQ)
+      - "Produced_Water"     # USGS water chemistry
+    
+  4:
+    name: "etl_stage"
+    intent: "Processing pipeline stage - indicates data readiness"
+    possible_values:
+      Downloads: 
+        intent: "Original files exactly as downloaded from source"
+        contains: ["zip archives", "PDF documentation", "raw dumps"]
+        ready_for_use: false
+      Extracted: 
+        intent: "Unzipped or converted to intermediate format"
+        contains: ["unzipped files", "converted formats"]
+        ready_for_use: false
+      Parsed: 
+        intent: "Cleaned, normalized CSVs ready for analysis"
+        contains: ["csv files", "standardized schemas"]
+        ready_for_use: true
+    progression: ["Downloads", "Extracted", "Parsed"]
+    status_rules:
+      complete: "All stages present with files"
+      in_progress: "Some stages present"
+      downloads_only: "Only Downloads present"
+
+# How to identify file types by pattern
+file_conventions:
+  documentation:
+    patterns: ["*dictionary*.pdf", "*manual*.pdf", "*readme*"]
+    intent: "Schema documentation, field definitions"
+  primary_data:
+    patterns: ["*.csv", "*.parquet"]
+    intent: "Actual data files for analysis"
+  archives:
+    patterns: ["*.zip", "*.gz", "*.tar"]
+    intent: "Compressed source files before extraction"
+  metadata:
+    patterns: ["manifest.json", "schema.json"]
+    intent: "Machine-readable metadata about dataset"
+
+# Domain knowledge for cross-dataset operations
+domain_hints:
+  FracFocus:
+    domain: "chemistry"
+    description: "Chemical disclosure data for hydraulic fracturing"
+    primary_entity: "Well Treatment"
+    join_keys: 
+      - field: "APINumber"
+        format: "14-digit API well identifier"
+    key_columns: ["APINumber", "JobStartDate", "TradeName", "Supplier", "CASNumber", "PercentHFJob"]
+    
+  RRC:
+    domain: "wells"
+    description: "Texas well permits, completions, and production"
+    primary_entity: "Well"
+    join_keys:
+      - field: "API"
+        format: "API well number (various formats)"
+      - field: "LEASE_NO"
+        format: "RRC lease number"
+    subsets:
+      Completions:
+        description: "Well completion reports with formation and treatment details"
+        key_columns: ["API", "COMPLETION_DATE", "FORMATION", "PERF_INTERVALS"]
+      Horizontal_Permits:
+        description: "Drilling permits for horizontal wells"
+        key_columns: ["API", "PERMIT_DATE", "OPERATOR", "LEASE_NAME"]
+      Well_Production:
+        description: "Monthly oil/gas/water production by lease"
+        key_columns: ["API", "PRODUCTION_DATE", "OIL_BBL", "GAS_MCF", "WATER_BBL"]
+        
+  NETL:
+    domain: "geology"
+    description: "Carbon storage and geological data"
+    primary_entity: "Geologic Formation"
+    join_keys:
+      - field: "BASIN"
+        format: "Basin name"
+    
+  USGS:
+    domain: "water"
+    description: "Produced water geochemistry"
+    primary_entity: "Water Sample"
+    join_keys:
+      - field: "API"
+        format: "API well number"
+      - field: "SAMPLE_ID"
+        format: "USGS sample identifier"
+
+# Common join patterns for multi-source analysis
+join_patterns:
+  - name: "treatment_to_production"
+    description: "Link FracFocus treatments to RRC production to measure EOR effectiveness"
+    sources: ["FracFocus", "RRC/Well_Production"]
+    join_key: "APINumber"
+    use_case: "Attribution analysis - did the treatment improve production?"
+    
+  - name: "completion_to_production"
+    description: "Link completion design to production outcomes"
+    sources: ["RRC/Completions", "RRC/Well_Production"]
+    join_key: "API"
+    use_case: "Completion optimization - which designs produce best?"
+    
+  - name: "permits_to_completions"
+    description: "Track well from permit through completion"
+    sources: ["RRC/Horizontal_Permits", "RRC/Completions"]
+    join_key: "API"
+    use_case: "Well lifecycle tracking"
+
+# Instructions for agents reading this file
+agent_instructions: |
+  1. Parse this YAML once at initialization
+  2. When given a path, split by "/" and interpret each level
+  3. Use domain_hints to understand join keys and relationships
+  4. Check etl_stage to know if data is ready for use
+  5. For dynamic levels (source, dataset), scan filesystem to discover contents
+  6. Use file_conventions to identify file types without hardcoding names
+  
+  Example interpretation:
+    Path: data/raw/FracFocus/Chemical_Data/Parsed/FracFocusRegistry_1.csv
+    
+    Interpretation:
+      - completeness: raw (original source data)
+      - source: FracFocus (chemical disclosure registry)
+      - dataset: Chemical_Data (fracturing chemical records)
+      - etl_stage: Parsed (ready for analysis)
+      - file_type: primary_data (CSV)
+      - domain: chemistry
+      - join_key: APINumber

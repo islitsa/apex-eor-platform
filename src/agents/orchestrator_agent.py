@@ -442,6 +442,14 @@ class OrchestratorAgent:
 
         print(f"[Phase 6.2] React agent reading UX spec from shared memory (version {shared_memory.ux_spec_version})")
 
+        # --- SAFETY CHECK A3: UX interaction_model must exist ---
+        interaction_model = getattr(shared_memory.ux_spec, "interaction_model", None)
+        if not interaction_model:
+            error = "UX Designer produced empty interaction_model — cannot generate React code"
+            self.memory.errors.append(error)
+            print(f"[HARD FAIL] {error}")
+            return {"success": False, "error": error}
+
         # Prepare React-specific knowledge
         # Phase 7.2: Use self.tools.knowledge_assembly instead of orchestrator.knowledge_assembly_tool
         if self.memory.knowledge:
@@ -463,6 +471,78 @@ class OrchestratorAgent:
             self.memory.react_satisfactory = shared_memory.react_satisfactory
 
             print(f"[Phase 6.2] React files written to shared memory (version {shared_memory.react_version})")
+
+            # --- SAFETY CHECK A2: HARD FAIL ON MOCK DATA ---
+            if react_files and self._contains_mock_data(react_files):
+                # Erase bad output so next iteration doesn't use it
+                shared_memory.react_files = None
+                self.memory.react_files = None
+                error = "Mock data detected in React output — regeneration required"
+                self.memory.errors.append(error)
+                print(f"[HARD FAIL] {error}")
+                return {"success": False, "error": error}
+
+            # --- SAFETY CHECK A4: STRUCTURAL + BEHAVIORAL VALIDATION ---
+            if react_files:
+                validation_errors = self._validate_react_output(react_files)
+                if validation_errors:
+                    print(f"\n[VALIDATION] Found {len(validation_errors)} issues in React output:")
+                    for err in validation_errors:
+                        print(f"  - {err}")
+
+                    # Log but don't hard-fail (let consistency checks handle severity)
+                    for err in validation_errors:
+                        self.memory.errors.append(f"[VALIDATION] {err}")
+
+                    # For critical issues, hard-fail
+                    critical_patterns = [
+                        "Wrong endpoint",
+                        "Wrong parameter",
+                        "Missing onFileSelect",
+                    ]
+                    critical_errors = [e for e in validation_errors
+                                       if any(p in e for p in critical_patterns)]
+
+                    if critical_errors:
+                        shared_memory.react_files = None
+                        self.memory.react_files = None
+                        error = f"Critical validation errors in React output: {critical_errors[0]}"
+                        print(f"[HARD FAIL] {error}")
+                        return {"success": False, "error": error}
+                else:
+                    print("[VALIDATION] React output passed structural + behavioral checks")
+
+            # --- SAFETY CHECK A5: TYPESCRIPT COMPILATION GATE ---
+            # This catches type errors that static analysis misses
+            if react_files:
+                ts_errors = self._typecheck_react_output(react_files)
+                if ts_errors:
+                    print(f"\n[TYPECHECK] Found {len(ts_errors)} TypeScript errors:")
+                    for err in ts_errors[:5]:
+                        print(f"  - {err}")
+
+                    # Log errors but don't hard-fail (allow user to fix)
+                    for err in ts_errors[:10]:
+                        self.memory.errors.append(f"[TYPECHECK] {err}")
+
+                    # Hard-fail on critical type errors
+                    critical_ts_patterns = [
+                        "Cannot read properties of undefined",
+                        "is not assignable to type",
+                        "Property .* does not exist on type",
+                    ]
+                    import re
+                    critical_ts_errors = [
+                        e for e in ts_errors
+                        if any(re.search(p, e) for p in critical_ts_patterns)
+                    ]
+
+                    if critical_ts_errors:
+                        shared_memory.react_files = None
+                        self.memory.react_files = None
+                        error = f"TypeScript errors in React output: {critical_ts_errors[0][:100]}"
+                        print(f"[HARD FAIL] {error}")
+                        return {"success": False, "error": error}
 
             # Phase 6.1: Run consistency checks now that we have both UX and React
             if react_files and shared_memory.ux_spec:
@@ -555,6 +635,239 @@ class OrchestratorAgent:
         self.memory.goal_achieved = True
         self.memory.current_goal = OrchestratorGoal.COMPLETE
         return {"finished": True}
+
+    # ========================================
+    # SAFETY HELPERS
+    # ========================================
+
+    def _contains_mock_data(self, files: Dict[str, str]) -> bool:
+        """
+        Detect mock/hardcoded data in React output.
+
+        Returns True if any file contains patterns indicating mock data.
+        This is a HARD FAIL condition - mock data must never ship.
+
+        NOTE: Be careful not to flag legitimate patterns like:
+        - Stage/status configuration arrays
+        - Menu items and navigation config
+        - Column definitions for tables
+        - Default state with empty arrays
+        """
+        import re
+
+        # Patterns that ALWAYS indicate mock data
+        mock_patterns = [
+            r"\bMOCK\b",                             # explicit MOCK keyword (word boundary)
+            r"\bfake\w*\b",                          # fake, fakeData, etc.
+            r"\bdummy\w*\b",                         # dummy, dummyData, etc.
+            r"sample\s*(data|records|rows|items)",   # sample data/records/rows
+            r"\bhardcode[d]?\b",                     # hardcode/hardcoded
+            r"const\s+(mock|fake|dummy|test)\w*\s*=",  # explicit mock variable names
+            r"(mock|fake|dummy|test)(Data|Items|Records|List)\s*=",  # mockData, fakeItems, etc.
+            r"TODO.*real\s*data",                    # TODO: replace with real data
+            r"//.*mock",                             # comments mentioning mock
+        ]
+
+        # Patterns that are ALLOWED (legitimate config/state)
+        # These are NOT mock data:
+        # - const stages = [{ id: 'raw', ... }]  <- stage config
+        # - const columns = [{ field: 'name', ... }] <- table config
+        # - useState<Pipeline[]>([]) <- empty default state
+        # - const menuItems = [{ label: 'Home', ... }] <- nav config
+
+        for filename, content in files.items():
+            # Skip non-code files
+            if not filename.endswith(('.tsx', '.ts', '.jsx', '.js')):
+                continue
+
+            for pattern in mock_patterns:
+                if re.search(pattern, content, re.IGNORECASE):
+                    print(f"[MOCK DETECTED] Pattern '{pattern}' found in {filename}")
+                    return True
+
+        return False
+
+    def _validate_react_output(self, files: Dict[str, str]) -> List[str]:
+        """
+        Validate generated React code for structural and behavioral correctness.
+
+        This catches common LLM hallucination issues:
+        - Wrong API endpoints
+        - Wrong parameter names
+        - Missing component wiring
+        - Unused hooks
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        import re
+        errors = []
+
+        # ========================================
+        # STRUCTURAL VALIDATION
+        # ========================================
+
+        # Check dataHooks.tsx has correct endpoint
+        data_hooks_files = [f for f in files if 'dataHooks' in f or 'hooks' in f.lower()]
+        for fname in data_hooks_files:
+            content = files[fname]
+
+            # Check for wrong preview endpoint
+            if '/preview?' in content and '/files/preview?' not in content:
+                errors.append(f"{fname}: Wrong endpoint - using /preview instead of /files/preview")
+
+            # Check for wrong parameter name
+            if 'limit=' in content or 'limit:' in content:
+                if 'page_size' not in content:
+                    errors.append(f"{fname}: Wrong parameter - using 'limit' instead of 'page_size'")
+
+            # Check for wrong response property (snake_case vs camelCase)
+            if 'total_rows' in content and 'totalRows' not in content:
+                errors.append(f"{fname}: Wrong property - using 'total_rows' instead of 'totalRows'")
+
+        # Check FileExplorer components have onFileSelect
+        for fname, content in files.items():
+            if 'FileExplorer' in fname or 'FileTree' in fname:
+                if 'onFileSelect' not in content:
+                    errors.append(f"{fname}: Missing onFileSelect callback prop")
+
+        # ========================================
+        # BEHAVIORAL VALIDATION
+        # ========================================
+
+        # Check that file selection is wired to preview
+        for fname, content in files.items():
+            if not fname.endswith(('.tsx', '.ts')):
+                continue
+
+            # If component uses FileExplorerTree, it should also use useFilePreview or handle selection
+            if 'FileExplorerTree' in content or '<FileExplorer' in content:
+                has_file_select_handler = 'onFileSelect' in content and ('setSelectedFile' in content or 'handleFileSelect' in content)
+                has_preview_hook = 'useFilePreview' in content
+
+                if has_file_select_handler and not has_preview_hook:
+                    # Only warn if there's selection but no preview
+                    if 'selectedFile' in content:
+                        errors.append(f"{fname}: Has file selection state but doesn't use useFilePreview hook")
+
+            # Check for unused hooks (defined but return value not used)
+            if 'usePipelines()' in content:
+                if '{ data' not in content and '{data' not in content:
+                    errors.append(f"{fname}: usePipelines() called but return value not destructured")
+
+        # ========================================
+        # API CONTRACT VALIDATION
+        # ========================================
+
+        # Check for common wrong endpoints
+        wrong_endpoints = [
+            (r'/api/pipelines/[^/]+/data\b', '/api/pipelines/{id}/data does not exist'),
+            (r'/api/pipelines/[^/]+/preview\?', '/api/pipelines/{id}/preview should be /files/preview'),
+        ]
+
+        for fname, content in files.items():
+            if not fname.endswith(('.tsx', '.ts')):
+                continue
+
+            for pattern, msg in wrong_endpoints:
+                if re.search(pattern, content):
+                    errors.append(f"{fname}: {msg}")
+
+        return errors
+
+    def _typecheck_react_output(self, files: Dict[str, str], base_dir: str = None) -> List[str]:
+        """
+        Layer 5: Run TypeScript compiler to catch type errors.
+
+        This catches errors that static validation misses:
+        - Missing optional chaining (?.)
+        - Accessing non-existent properties
+        - Type mismatches between files
+        - Unused imports
+
+        Args:
+            files: Dict of filename -> content
+            base_dir: Optional base directory with tsconfig.json and node_modules
+
+        Returns:
+            List of TypeScript error messages (empty if clean)
+        """
+        import subprocess
+        import os
+        import tempfile
+        import shutil
+        from pathlib import Path
+
+        # Use existing generated_react_dashboard if it exists (has node_modules)
+        project_root = Path(__file__).parent.parent.parent
+        existing_dir = project_root / "generated_react_dashboard"
+
+        if existing_dir.exists() and (existing_dir / "node_modules").exists():
+            output_dir = str(existing_dir)
+            use_temp = False
+            print(f"  [TypeCheck] Using existing project at {output_dir}")
+        elif base_dir and Path(base_dir).exists():
+            output_dir = base_dir
+            use_temp = False
+        else:
+            # No existing project, skip typecheck
+            print("  [TypeCheck] No existing project with node_modules, skipping")
+            return []
+
+        # Write generated files to the directory
+        try:
+            print(f"  [TypeCheck] Writing {len(files)} files for type checking...")
+            for filename, content in files.items():
+                filepath = Path(output_dir) / filename
+                filepath.parent.mkdir(parents=True, exist_ok=True)
+                filepath.write_text(content, encoding='utf-8')
+
+            # Check if tsconfig.json exists
+            tsconfig_path = os.path.join(output_dir, "tsconfig.json")
+            if not os.path.exists(tsconfig_path):
+                print(f"  [TypeCheck] No tsconfig.json found, skipping")
+                return []
+
+            print(f"  [TypeCheck] Running tsc --noEmit...")
+
+            result = subprocess.run(
+                ["npx", "tsc", "--noEmit"],
+                cwd=output_dir,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                shell=True  # Required for Windows
+            )
+
+            if result.returncode == 0:
+                print("  [TypeCheck] ✅ No TypeScript errors")
+                return []
+
+            # Parse errors from stdout (tsc outputs errors to stdout, not stderr)
+            output = result.stdout + result.stderr
+            errors = []
+
+            for line in output.split('\n'):
+                line = line.strip()
+                # TypeScript errors look like: "src/App.tsx(77,30): error TS2339: ..."
+                if 'error TS' in line or 'Error:' in line:
+                    errors.append(line)
+
+            print(f"  [TypeCheck] ❌ Found {len(errors)} TypeScript errors")
+            for err in errors[:5]:  # Show first 5
+                print(f"    - {err[:100]}...")
+
+            return errors
+
+        except subprocess.TimeoutExpired:
+            print("  [TypeCheck] ⚠️ TypeScript check timed out")
+            return ["TypeScript check timed out after 60s"]
+        except FileNotFoundError:
+            print("  [TypeCheck] ⚠️ npx/tsc not found, skipping typecheck")
+            return []
+        except Exception as e:
+            print(f"  [TypeCheck] ⚠️ TypeScript check failed: {e}")
+            return [f"TypeScript check failed: {str(e)}"]
 
     # ========================================
     # PHASE 6.1: CONSISTENCY CHECKING
@@ -1042,6 +1355,18 @@ Return ONLY the JSON, no other text."""
             filter_result = self._skill_filter_sources()
             filtered_sources = filter_result.get('filtered_sources', None)
             print(f"  Filtered to: {filtered_sources}")
+
+        # CRITICAL: Update shared_memory.user_requirements with filtered sources
+        # This ensures UX Designer only sees filtered data sources
+        if filtered_sources and shared_memory:
+            original_sources = shared_memory.user_requirements.get('data_sources', {})
+            filtered_data_sources = {
+                source_id: source_data
+                for source_id, source_data in original_sources.items()
+                if source_id in filtered_sources
+            }
+            shared_memory.user_requirements['data_sources'] = filtered_data_sources
+            print(f"  [PROPAGATED] Updated shared_memory with {len(filtered_data_sources)} filtered sources")
 
         # Step 1: Discover data (using filtered sources)
         print("\n[Step 1/7] Discovering data...")

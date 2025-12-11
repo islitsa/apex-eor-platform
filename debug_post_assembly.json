@@ -1,0 +1,43 @@
+{
+  "pipelines": [
+    {
+      "id": "fracfocus_chemical_data",
+      "name": "fracfocus_chemical_data",
+      "display_name": "fracfocus / Chemical_Data",
+      "status": "processed",
+      "metrics": {
+        "file_count": 36,
+        "record_count": 7304502,
+        "data_size": "10.6 GB"
+      },
+      "stages": [
+        {
+          "name": "download",
+          "status": "complete"
+        },
+        {
+          "name": "extract",
+          "status": "complete"
+        },
+        {
+          "name": "parsing",
+          "status": "complete"
+        }
+      ],
+      "metadata": {
+        "download_files": 2,
+        "extract_files": 17,
+        "parsing_files": 17
+      },
+      "files": []
+    }
+  ],
+  "summary": {
+    "total_pipelines": 9,
+    "total_records": 7304502,
+    "total_size": "0 B",
+    "datasets_available": 9
+  },
+  "success": true,
+  "error": null
+}

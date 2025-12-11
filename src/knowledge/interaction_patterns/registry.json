@@ -1,0 +1,619 @@
+{
+  "version": "1.0.0",
+  "description": "Canonical UX interaction patterns and behavioral state machines for Pinecone embedding",
+  "patterns": [
+    {
+      "id": "master-detail-selection",
+      "category": "navigation",
+      "name": "Master-Detail Selection Flow",
+      "description": "User selects an item from a list (master), triggering display of detailed content (detail)",
+      "event": "onItemSelect",
+      "state_changes": [
+        "selectedItemId = item.id",
+        "detailPanelVisible = true",
+        "previousSelection = selectedItemId"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/{resource}/{id}",
+        "params": ["itemId"],
+        "method": "GET",
+        "trigger": "on_selection_change"
+      },
+      "ui_feedback": [
+        "highlight selected item in master list",
+        "show loading skeleton in detail panel",
+        "scroll detail panel into view if needed",
+        "disable master list during load (optional)"
+      ],
+      "dependency_rules": [
+        "refetch detail when selectedItemId changes",
+        "clear detail when selectedItemId is null",
+        "preserve master list state during detail fetch"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for selectedItemId", "useEffect with [selectedItemId] dependency"],
+        "pattern": "const { data, loading } = useItemDetail(selectedItemId)"
+      }
+    },
+    {
+      "id": "progressive-disclosure-expand",
+      "category": "navigation",
+      "name": "Progressive Disclosure Expansion",
+      "description": "User clicks to expand/collapse content, revealing nested information progressively",
+      "event": "onExpandToggle",
+      "state_changes": [
+        "expandedIds = toggle(expandedIds, item.id)",
+        "if expanding and !cached: fetchNestedData(item.id)"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/{resource}/{id}/children",
+        "params": ["parentId"],
+        "method": "GET",
+        "trigger": "on_first_expand",
+        "caching": "cache children after first fetch"
+      },
+      "ui_feedback": [
+        "rotate expand/collapse chevron icon",
+        "animate height transition (200-300ms ease)",
+        "show inline skeleton for nested content",
+        "indent nested content by 16-24px"
+      ],
+      "dependency_rules": [
+        "fetch children only on first expand (lazy load)",
+        "cache children in state to avoid refetch on collapse/expand",
+        "refetch if parent data changes"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for expandedIds Set", "useMemo for cached children"],
+        "pattern": "const isExpanded = expandedIds.has(item.id); onClick={() => toggleExpand(item.id)}"
+      }
+    },
+    {
+      "id": "file-explorer-drilldown",
+      "category": "navigation",
+      "name": "File Explorer Drilldown",
+      "description": "User navigates through folder hierarchy, selecting files to view content. Uses RESTful pipeline-scoped endpoint.",
+      "event": "onFileSelect",
+      "state_changes": [
+        "selectedFile = filePath",
+        "currentPage = 1",
+        "breadcrumbs = buildBreadcrumbs(filePath)",
+        "expandedFolders = expandParentFolders(filePath)"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/pipelines/{pipelineId}/files/preview",
+        "params": ["file_path", "page", "page_size"],
+        "query_string_format": "?file_path={selectedFile}&page={currentPage}&page_size={rowsPerPage}",
+        "method": "GET",
+        "trigger": "on_file_selection_change",
+        "response_shape": {
+          "columns": "string[]",
+          "rows": "Record<string, any>[]",
+          "totalRows": "number"
+        }
+      },
+      "ui_feedback": [
+        "highlight selected file in tree",
+        "show loading skeleton in preview panel",
+        "update breadcrumb navigation",
+        "scroll selected file into view in tree",
+        "show file icon based on extension"
+      ],
+      "dependency_rules": [
+        "refetch preview when filePath changes",
+        "refetch preview when currentPage changes",
+        "reset currentPage to 1 when filePath changes",
+        "clear preview when no file selected",
+        "do NOT fetch if selectedFile is null or empty"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for selectedFile", "useState for currentPage", "useEffect with [pipelineId, selectedFile, currentPage] dependency"],
+        "pattern": "useEffect(() => { if (!selectedFile) return; fetch(`/api/pipelines/${pipelineId}/files/preview?file_path=${selectedFile}&page=${currentPage}&page_size=${rowsPerPage}`).then(r => r.json()).then(json => setData(json.rows)) }, [pipelineId, selectedFile, currentPage])",
+        "url_template": "http://localhost:8000/api/pipelines/${encodeURIComponent(pipelineId)}/files/preview?file_path=${encodeURIComponent(selectedFile)}&page=${currentPage}&page_size=${rowsPerPage}",
+        "anti_patterns": [
+          "WRONG: Using /api/files/preview (old non-RESTful endpoint)",
+          "WRONG: Using params filePath, limit (should be file_path, page_size)",
+          "WRONG: Fetching when selectedFile is null"
+        ]
+      }
+    },
+    {
+      "id": "folder-expand-collapse",
+      "category": "navigation",
+      "name": "Folder Expand/Collapse",
+      "description": "User expands or collapses folders in a tree view to navigate hierarchy",
+      "event": "onFolderToggle",
+      "state_changes": [
+        "expandedFolders = toggle(expandedFolders, folderId)",
+        "if expanding: auto-expand single-child folders"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/folders/{id}/contents",
+        "params": ["folderId"],
+        "method": "GET",
+        "trigger": "on_first_expand_if_not_preloaded",
+        "caching": "preload first 2 levels, lazy load deeper"
+      },
+      "ui_feedback": [
+        "rotate folder chevron (0deg collapsed, 90deg expanded)",
+        "animate children reveal with slide-down",
+        "show folder icon (folder vs folder_open)",
+        "indent children by depth * 24px"
+      ],
+      "dependency_rules": [
+        "lazy load folder contents on first expand",
+        "preserve expanded state across re-renders",
+        "collapse children when parent collapses (optional)"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for expandedFolders Set"],
+        "pattern": "const isExpanded = expandedFolders.has(folder.id); const toggleFolder = (id) => setExpandedFolders(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })"
+      }
+    },
+    {
+      "id": "pagination-navigation",
+      "category": "data-display",
+      "name": "Pagination Navigation",
+      "description": "User navigates through pages of data using pagination controls",
+      "event": "onPageChange",
+      "state_changes": [
+        "currentPage = newPage",
+        "scrollToTop = true"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/{resource}",
+        "params": ["page", "limit", "filters"],
+        "method": "GET",
+        "trigger": "on_page_change"
+      },
+      "ui_feedback": [
+        "show loading state on table/list",
+        "update page indicator (Page X of Y)",
+        "disable prev button on page 1",
+        "disable next button on last page",
+        "scroll to top of list after page change",
+        "preserve scroll position if staying on same page"
+      ],
+      "dependency_rules": [
+        "refetch data when currentPage changes",
+        "refetch data when filters change (reset to page 1)",
+        "refetch data when limit changes (reset to page 1)",
+        "preserve currentPage when only sort changes"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for currentPage", "useEffect with [currentPage, filters] dependency"],
+        "pattern": "const { data, total, loading } = useDataSource(sourceId, { page: currentPage, limit: rowsPerPage }); const totalPages = Math.ceil(total / rowsPerPage)"
+      }
+    },
+    {
+      "id": "async-loading-skeleton",
+      "category": "feedback",
+      "name": "Async Loading Skeleton Pattern",
+      "description": "Display skeleton placeholders during async data fetching",
+      "event": "onDataFetchStart",
+      "state_changes": [
+        "loading = true",
+        "error = null"
+      ],
+      "data_fetch": {
+        "endpoint": "any",
+        "params": [],
+        "method": "GET",
+        "trigger": "automatic"
+      },
+      "ui_feedback": [
+        "show skeleton matching content shape",
+        "pulse animation on skeleton (1.5s ease-in-out infinite)",
+        "skeleton for text: rounded rectangles with varying widths",
+        "skeleton for images: aspect-ratio preserved gray box",
+        "skeleton for tables: row placeholders with column widths",
+        "minimum skeleton display time: 200ms (prevent flash)"
+      ],
+      "dependency_rules": [
+        "show skeleton when loading=true and data=null",
+        "show skeleton when loading=true and data is stale (optional)",
+        "hide skeleton when loading=false",
+        "transition from skeleton to content with fade (150ms)"
+      ],
+      "react_implementation": {
+        "hooks": ["loading state from data hook"],
+        "pattern": "if (loading) return <Skeleton variant='table' rows={10} />; return <DataTable data={data} />"
+      }
+    },
+    {
+      "id": "error-state-display",
+      "category": "feedback",
+      "name": "Error State Display",
+      "description": "Display error message when data fetching fails with retry option",
+      "event": "onDataFetchError",
+      "state_changes": [
+        "loading = false",
+        "error = errorMessage",
+        "data = previousData or null"
+      ],
+      "data_fetch": {
+        "endpoint": "any",
+        "params": [],
+        "method": "GET",
+        "trigger": "on_retry_click"
+      },
+      "ui_feedback": [
+        "show error icon (error or warning)",
+        "display error message in red/orange text",
+        "show retry button",
+        "preserve previous data if available (stale-while-error)",
+        "log error to console for debugging"
+      ],
+      "dependency_rules": [
+        "show error state when error is not null",
+        "clear error on successful retry",
+        "clear error when dependencies change (new fetch)"
+      ],
+      "react_implementation": {
+        "hooks": ["error state from data hook", "refetch function"],
+        "pattern": "if (error) return <ErrorState message={error} onRetry={refetch} />; return <DataDisplay data={data} />"
+      }
+    },
+    {
+      "id": "empty-state-display",
+      "category": "feedback",
+      "name": "Empty State Display",
+      "description": "Display meaningful empty state when no data is available",
+      "event": "onDataEmpty",
+      "state_changes": [
+        "loading = false",
+        "data = []",
+        "isEmpty = true"
+      ],
+      "data_fetch": {
+        "endpoint": "none",
+        "params": [],
+        "method": "none",
+        "trigger": "none"
+      },
+      "ui_feedback": [
+        "show empty state illustration or icon",
+        "display contextual message (e.g., 'No files found')",
+        "suggest action if applicable (e.g., 'Upload a file')",
+        "use muted colors (gray-400)",
+        "center content vertically and horizontally"
+      ],
+      "dependency_rules": [
+        "show empty state when loading=false and data.length=0",
+        "distinguish between 'no data exists' and 'no results for filter'",
+        "show different message for filtered empty vs total empty"
+      ],
+      "react_implementation": {
+        "hooks": ["data from data hook"],
+        "pattern": "if (!loading && data.length === 0) return <EmptyState message='No items found' icon='inbox' />; return <DataList data={data} />"
+      }
+    },
+    {
+      "id": "selection-fetch-render-loop",
+      "category": "data-flow",
+      "name": "Selection-Fetch-Render Loop",
+      "description": "Core pattern: user selection triggers data fetch which triggers re-render with new data",
+      "event": "onSelectionChange",
+      "state_changes": [
+        "selectedId = newId",
+        "trigger useEffect with [selectedId] dependency"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/{resource}/{selectedId}",
+        "params": ["selectedId"],
+        "method": "GET",
+        "trigger": "useEffect dependency array"
+      },
+      "ui_feedback": [
+        "immediate: update selection highlight",
+        "0-100ms: show loading indicator",
+        "on success: render new data",
+        "on error: show error state"
+      ],
+      "dependency_rules": [
+        "CRITICAL: selectedId must be in useEffect dependency array",
+        "CRITICAL: changing selection must trigger new fetch",
+        "NEVER use static/mock data for selection-dependent content",
+        "reset pagination/scroll when selection changes"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for selectedId", "custom hook with selectedId as dependency"],
+        "pattern": "const [selectedId, setSelectedId] = useState(null); const { data, loading } = useItemData(selectedId); // useItemData has useEffect([selectedId])",
+        "anti_patterns": [
+          "WRONG: const data = MOCK_DATA; // static data ignores selection",
+          "WRONG: useEffect(() => fetchData(), []); // empty deps = fetch once",
+          "WRONG: fetching in onClick without state update"
+        ]
+      }
+    },
+    {
+      "id": "dataset-card-expand",
+      "category": "navigation",
+      "name": "Dataset Card Expansion",
+      "description": "User clicks dataset card to expand and show file explorer within the card",
+      "event": "onDatasetCardClick",
+      "state_changes": [
+        "expandedDatasetId = datasetId",
+        "selectedFile = null",
+        "collapseOtherDatasets = true (accordion behavior)"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/pipelines/{id}/files",
+        "params": ["pipelineId"],
+        "method": "GET",
+        "trigger": "on_first_expand",
+        "caching": "cache file tree after first load"
+      },
+      "ui_feedback": [
+        "expand card height with animation",
+        "reveal file explorer tree inside card",
+        "collapse other expanded cards (accordion)",
+        "show loading skeleton for file tree",
+        "update card border/shadow to show active state"
+      ],
+      "dependency_rules": [
+        "fetch file tree on first expand only",
+        "cache file tree for subsequent expand/collapse",
+        "clear selectedFile when collapsing",
+        "refetch file tree if pipeline data changes"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for expandedDatasetId", "conditional useFileTree hook"],
+        "pattern": "const isExpanded = expandedDatasetId === dataset.id; const { files, loading } = useFileTree(isExpanded ? dataset.id : null)"
+      }
+    },
+    {
+      "id": "data-table-row-selection",
+      "category": "data-display",
+      "name": "Data Table Row Selection",
+      "description": "User selects rows in a data table for bulk actions or detail view",
+      "event": "onRowSelect",
+      "state_changes": [
+        "selectedRows = updateSelection(selectedRows, rowId, isMultiSelect)",
+        "lastSelectedRow = rowId"
+      ],
+      "data_fetch": {
+        "endpoint": "none for selection, /api/{resource}/{id} for detail",
+        "params": ["rowId"],
+        "method": "GET",
+        "trigger": "optional_detail_fetch_on_single_select"
+      },
+      "ui_feedback": [
+        "highlight selected row(s) with background color",
+        "show checkbox state for multi-select",
+        "update selection count in toolbar",
+        "enable/disable bulk action buttons",
+        "shift+click for range selection"
+      ],
+      "dependency_rules": [
+        "preserve selection across pagination (by ID)",
+        "clear selection when filters change",
+        "update selection when data refreshes (remove deleted IDs)"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for selectedRows Set"],
+        "pattern": "const [selectedRows, setSelectedRows] = useState(new Set()); const toggleRow = (id) => setSelectedRows(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; })"
+      }
+    },
+    {
+      "id": "filter-apply-refresh",
+      "category": "data-display",
+      "name": "Filter Apply and Refresh",
+      "description": "User applies filters to narrow down displayed data",
+      "event": "onFilterChange",
+      "state_changes": [
+        "filters = newFilters",
+        "currentPage = 1",
+        "selectedItems = []"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/{resource}",
+        "params": ["filters", "page", "limit"],
+        "method": "GET",
+        "trigger": "on_filter_change"
+      },
+      "ui_feedback": [
+        "show active filter chips/badges",
+        "update result count",
+        "show loading state on data",
+        "scroll to top of results",
+        "show 'clear all filters' option"
+      ],
+      "dependency_rules": [
+        "refetch when any filter changes",
+        "reset to page 1 when filters change",
+        "clear selection when filters change",
+        "debounce text filter inputs (300ms)"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for filters", "useEffect with [filters] dependency", "useDebouncedValue for text inputs"],
+        "pattern": "const [filters, setFilters] = useState({}); const debouncedFilters = useDebouncedValue(filters, 300); const { data, loading } = useDataSource(sourceId, { filters: debouncedFilters, page: 1 })"
+      }
+    },
+    {
+      "id": "breadcrumb-navigation",
+      "category": "navigation",
+      "name": "Breadcrumb Navigation",
+      "description": "User navigates hierarchy using breadcrumb trail",
+      "event": "onBreadcrumbClick",
+      "state_changes": [
+        "currentPath = breadcrumb.path",
+        "expandedFolders = foldersUpToPath(breadcrumb.path)",
+        "selectedFile = null if navigating to folder"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/folders/{path}/contents",
+        "params": ["path"],
+        "method": "GET",
+        "trigger": "on_breadcrumb_click"
+      },
+      "ui_feedback": [
+        "highlight clicked breadcrumb",
+        "update folder tree expansion state",
+        "scroll tree to show current location",
+        "truncate long breadcrumb paths with ellipsis"
+      ],
+      "dependency_rules": [
+        "sync breadcrumbs with currentPath",
+        "update tree expansion to show breadcrumb path",
+        "clear file selection when navigating to folder"
+      ],
+      "react_implementation": {
+        "hooks": ["useMemo for breadcrumb generation from path"],
+        "pattern": "const breadcrumbs = useMemo(() => buildBreadcrumbs(currentPath), [currentPath]); const navigateTo = (path) => { setCurrentPath(path); setSelectedFile(null); }"
+      }
+    },
+    {
+      "id": "infinite-scroll-load",
+      "category": "data-display",
+      "name": "Infinite Scroll Loading",
+      "description": "Automatically load more data when user scrolls near bottom",
+      "event": "onScrollNearBottom",
+      "state_changes": [
+        "page = page + 1",
+        "data = [...existingData, ...newData]"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/{resource}",
+        "params": ["page", "limit", "cursor"],
+        "method": "GET",
+        "trigger": "intersection_observer_on_sentinel"
+      },
+      "ui_feedback": [
+        "show loading spinner at bottom",
+        "append new items smoothly",
+        "hide sentinel when no more data",
+        "show 'end of list' message"
+      ],
+      "dependency_rules": [
+        "trigger fetch when sentinel enters viewport",
+        "prevent duplicate fetches with loading flag",
+        "stop fetching when hasMore=false"
+      ],
+      "react_implementation": {
+        "hooks": ["useInfiniteQuery or custom hook", "useIntersectionObserver for sentinel"],
+        "pattern": "const { data, fetchNextPage, hasMore, loading } = useInfiniteData(sourceId); const sentinelRef = useRef(); useIntersectionObserver(sentinelRef, () => { if (hasMore && !loading) fetchNextPage(); })"
+      }
+    },
+    {
+      "id": "modal-open-close",
+      "category": "feedback",
+      "name": "Modal Open/Close",
+      "description": "User opens and closes modal dialogs",
+      "event": "onModalToggle",
+      "state_changes": [
+        "isModalOpen = !isModalOpen",
+        "modalData = data if opening",
+        "focusTrap = true if opening"
+      ],
+      "data_fetch": {
+        "endpoint": "optional /api/{resource}/{id}",
+        "params": ["itemId"],
+        "method": "GET",
+        "trigger": "on_modal_open_if_needed"
+      },
+      "ui_feedback": [
+        "fade in backdrop",
+        "scale/slide in modal",
+        "trap focus inside modal",
+        "disable body scroll",
+        "close on escape key",
+        "close on backdrop click (optional)"
+      ],
+      "dependency_rules": [
+        "fetch modal data on open if not passed as prop",
+        "clear modal data on close",
+        "restore focus to trigger element on close"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for isOpen", "useEffect for focus trap and body scroll"],
+        "pattern": "const [isOpen, setIsOpen] = useState(false); const [modalData, setModalData] = useState(null); const openModal = (data) => { setModalData(data); setIsOpen(true); }"
+      }
+    },
+    {
+      "id": "search-autocomplete",
+      "category": "data-display",
+      "name": "Search with Autocomplete",
+      "description": "User types search query and sees autocomplete suggestions",
+      "event": "onSearchInput",
+      "state_changes": [
+        "searchQuery = inputValue",
+        "suggestions = fetchedSuggestions",
+        "highlightedIndex = 0"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/search/suggestions",
+        "params": ["query", "limit"],
+        "method": "GET",
+        "trigger": "debounced_on_input_change"
+      },
+      "ui_feedback": [
+        "show dropdown with suggestions",
+        "highlight matching text in suggestions",
+        "keyboard navigation (up/down/enter)",
+        "show loading spinner in dropdown",
+        "show 'no results' message"
+      ],
+      "dependency_rules": [
+        "debounce search input (300ms)",
+        "cancel pending request on new input",
+        "minimum 2-3 characters before searching",
+        "close dropdown on blur or escape"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for query", "useDebouncedValue", "useSearchSuggestions hook"],
+        "pattern": "const [query, setQuery] = useState(''); const debouncedQuery = useDebouncedValue(query, 300); const { suggestions, loading } = useSearchSuggestions(debouncedQuery)"
+      }
+    },
+    {
+      "id": "file-preview-fetch",
+      "category": "data-display",
+      "name": "File Preview Fetch",
+      "description": "Fetch and display paginated file preview when user selects a file. Core pattern for data preview tables. Uses RESTful pipeline-scoped endpoint.",
+      "event": "onFilePreview",
+      "state_changes": [
+        "selectedFile = filePath",
+        "currentPage = 1"
+      ],
+      "data_fetch": {
+        "endpoint": "/api/pipelines/{pipelineId}/files/preview",
+        "params": ["file_path", "page", "page_size"],
+        "query_string_format": "?file_path={selectedFile}&page={currentPage}&page_size={rowsPerPage}",
+        "method": "GET",
+        "trigger": "on_file_selection_or_page_change",
+        "response_shape": {
+          "columns": "string[]",
+          "rows": "Record<string, any>[]",
+          "totalRows": "number",
+          "page": "number",
+          "pageSize": "number"
+        }
+      },
+      "ui_feedback": [
+        "show loading skeleton",
+        "highlight selected file",
+        "scroll preview panel to top"
+      ],
+      "dependency_rules": [
+        "refetch preview when selectedFile changes",
+        "refetch preview when currentPage changes",
+        "reset currentPage to 1 when selectedFile changes",
+        "do NOT fetch if selectedFile is null or empty"
+      ],
+      "react_implementation": {
+        "hooks": ["useState for selectedFile", "useState for currentPage", "useEffect for fetching"],
+        "pattern": "useEffect(() => { if (!selectedFile) return; fetch(`/api/pipelines/${pipelineId}/files/preview?file_path=${selectedFile}&page=${currentPage}&page_size=${rowsPerPage}`).then(r => r.json()).then(json => setData(json.rows)) }, [pipelineId, selectedFile, currentPage])",
+        "url_template": "http://localhost:8000/api/pipelines/${encodeURIComponent(pipelineId)}/files/preview?file_path=${encodeURIComponent(selectedFile)}&page=${currentPage}&page_size=${rowsPerPage}",
+        "anti_patterns": [
+          "WRONG: Using /api/files/preview (old endpoint)",
+          "WRONG: Using /api/pipelines/{id}/preview (missing /files/ segment)",
+          "WRONG: Using params file, limit, offset (should be file_path, page, page_size)",
+          "WRONG: Using json.data (should be json.rows)",
+          "WRONG: Fetching when selectedFile is null/empty",
+          "WRONG: Using static/mock data that doesn't refresh on selection",
+          "WRONG: Missing currentPage in dependency array"
+        ]
+      }
+    }
+  ]
+}
